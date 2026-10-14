@@ -1,0 +1,13 @@
+services:
+  katze:
+    build: .
+    container_name: katze
+    restart: unless-stopped
+    environment:
+      # The relay's own variable, never PORT: a parent process that exports PORT
+      # for something else must not drag the relay onto that port.
+      RELAY_PORT: 4331
+    # Loopback only. Caddy is the only thing that should be able to reach it,
+    # and the box is also the tunnel endpoint for every other site here.
+    ports:
+      - "127.0.0.1:4331:4331"

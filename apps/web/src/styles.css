@@ -1,0 +1,740 @@
+@import "@fontsource-variable/bricolage-grotesque/wght.css";
+
+/*
+ * Visual world taken from DLE Club and its games: dark page, warm off-white
+ * ink, cream as the one bright surface, Bricolage Grotesque with a heavy 800
+ * display voice, pill controls with an inset bottom lip, and rings drawn with
+ * inset box-shadows instead of drop shadows. Token names and values match the
+ * hub so this reads as the same family, not a cousin.
+ *
+ * The world also happens to be the game: cream discs on a dark table is the
+ * physical object this is a version of. Red belongs to the dead cat and to
+ * nothing else; green marks a bid that came off. Those two are semantic, the
+ * way the hub tints its own chips, and no third hue is allowed in.
+ *
+ * Radius scale: pill 99px, panel 16px, tile 11px, chip 7px. Dark only, like
+ * every other game in the family.
+ */
+:root {
+  --page: #0e1117;
+  --card: #181c24;
+  --band: #182033;
+  --ink: #f3f1ec;
+  --secondary: rgba(243, 241, 236, 0.64);
+  --line: rgba(243, 241, 236, 0.12);
+  --cream: #faf2dd;
+  --cream-2: rgba(250, 242, 221, 0.68);
+  --cream-line: rgba(250, 242, 221, 0.16);
+  --dead: #ff6a5a;
+  --dead-wash: rgba(255, 106, 90, 0.16);
+  --good: #1f9d5b;
+  --good-wash: rgba(31, 157, 91, 0.2);
+  --lip: inset 0 -2px 0 rgba(0, 0, 0, 0.14);
+  --ring: inset 0 0 0 1px var(--line);
+  color-scheme: dark;
+  accent-color: var(--cream);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+}
+
+::selection {
+  background: var(--cream);
+  color: var(--page);
+}
+
+body {
+  min-height: 100dvh;
+  background: var(--page);
+  color: var(--ink);
+  font: 400 16px/1.5 "Bricolage Grotesque Variable", "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  caret-color: var(--cream);
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.app {
+  max-width: 900px;
+  margin: 0 auto;
+  /* Respect the home indicator and any notch, in both orientations. */
+  padding: 20px calc(16px + env(safe-area-inset-right)) calc(56px + env(safe-area-inset-bottom))
+    calc(16px + env(safe-area-inset-left));
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* ── Header ─────────────────────────────────────────────────────────────── */
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.header h1 {
+  font-size: clamp(1.5rem, 1.1rem + 1.6vw, 2rem);
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  margin-right: auto;
+}
+
+.header h1 span {
+  color: var(--cream);
+}
+
+.code {
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  padding: 9px 16px;
+}
+
+.code small {
+  font-size: 0.68rem;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  color: var(--secondary);
+}
+
+.wire {
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-transform: lowercase;
+  padding: 6px 12px;
+  border-radius: 99px;
+  box-shadow: var(--ring);
+  color: var(--secondary);
+}
+
+.wire.on {
+  color: var(--good);
+  box-shadow: inset 0 0 0 1px var(--good-wash);
+  background: var(--good-wash);
+}
+
+.wire.off {
+  color: var(--dead);
+  background: var(--dead-wash);
+  box-shadow: inset 0 0 0 1px var(--dead-wash);
+}
+
+/* ── Surfaces ───────────────────────────────────────────────────────────── */
+
+.panel,
+.controls,
+.banner,
+.shelf,
+.rules,
+.log {
+  background: var(--card);
+  border-radius: 16px;
+  box-shadow: var(--ring);
+  padding: 18px;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.panel h2 {
+  font-size: 1.1rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.lede {
+  color: var(--secondary);
+  max-width: 60ch;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 0.8rem;
+  font-weight: 800;
+  color: var(--ink);
+}
+
+input {
+  /* 16px minimum: anything smaller makes iOS Safari zoom on focus. */
+  font: 500 1.05rem/1 inherit;
+  padding: 15px 16px;
+  color: var(--ink);
+  background: var(--page);
+  border: 0;
+  border-radius: 11px;
+  box-shadow: var(--ring);
+}
+
+input::placeholder {
+  color: rgba(243, 241, 236, 0.46);
+}
+
+input:focus-visible,
+button:focus-visible,
+summary:focus-visible {
+  outline: 2px solid var(--cream);
+  outline-offset: 2px;
+}
+
+/* ── Controls ───────────────────────────────────────────────────────────── */
+
+button {
+  font: 800 0.95rem/1 inherit;
+  color: var(--ink);
+  background: rgba(250, 242, 221, 0.09);
+  border: 0;
+  border-radius: 99px;
+  box-shadow: inset 0 0 0 1px var(--cream-line), var(--lip);
+  /* 15px keeps every control at or above the 44px touch target on a phone. */
+  padding: 15px 20px;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.1s ease, color 0.15s ease;
+}
+
+button:hover:not(:disabled) {
+  background: rgba(250, 242, 221, 0.16);
+}
+
+button:active:not(:disabled) {
+  transform: translateY(1px);
+  box-shadow: inset 0 0 0 1px var(--cream-line);
+}
+
+button:disabled {
+  opacity: 0.34;
+  cursor: not-allowed;
+}
+
+button.primary {
+  background: var(--cream);
+  color: #17120a;
+  box-shadow: var(--lip);
+}
+
+button.primary:hover:not(:disabled) {
+  background: #fff8e8;
+}
+
+button.tiny {
+  font-size: 0.72rem;
+  padding: 8px 14px;
+}
+
+@media (pointer: coarse) {
+  /* A small chip is still a thumb target when it is the only way to act. */
+  button.tiny {
+    padding: 13px 18px;
+  }
+
+  .code {
+    padding: 13px 16px;
+  }
+}
+
+button.open {
+  background: var(--dead);
+  color: #2b0a06;
+  box-shadow: var(--lip);
+}
+
+button.open:hover:not(:disabled) {
+  background: #ff8273;
+}
+
+.row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.row > button {
+  flex: 1 1 150px;
+}
+
+.muted {
+  color: var(--secondary);
+  font-size: 0.88rem;
+}
+
+.center {
+  text-align: center;
+}
+
+.toast {
+  background: var(--dead-wash);
+  box-shadow: inset 0 0 0 1px var(--dead);
+  color: var(--dead);
+  font-weight: 800;
+  padding: 13px 16px;
+  border-radius: 11px;
+}
+
+/* ── Homepage ───────────────────────────────────────────────────────────── */
+
+/*
+ * Phone first: headline, then the art, then the form, in that order, because
+ * the art is the pitch and the form is the ask. Desktop puts the art beside
+ * the two of them instead of between.
+ */
+.hero {
+  display: grid;
+  grid-template-areas: "copy" "art" "form";
+  gap: 20px;
+  background: var(--card);
+  border-radius: 16px;
+  box-shadow: var(--ring);
+  padding: 22px 18px;
+}
+
+.hero-copy {
+  grid-area: copy;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.start {
+  grid-area: form;
+}
+
+.tile-strip {
+  grid-area: art;
+}
+
+.hero h2 {
+  font-size: clamp(1.55rem, 1.15rem + 2.1vw, 2.6rem);
+  font-weight: 800;
+  line-height: 1.08;
+  letter-spacing: -0.04em;
+  text-wrap: balance;
+}
+
+.hero .lede {
+  font-size: 1.02rem;
+}
+
+.start {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.start .row > button {
+  flex: 1 1 auto;
+}
+
+/* The product's own art, fanned out like coasters dropped on a table. */
+.tile-strip {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 4px 0;
+}
+
+.plate {
+  width: clamp(62px, 17vw, 104px);
+  height: auto;
+  margin-inline: -7px;
+  border-radius: 50%;
+  transform: rotate(calc((var(--i) - 2) * 5deg));
+  animation: deal-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+  animation-delay: calc(var(--i) * 70ms);
+}
+
+.plate.dead {
+  /* The one everyone is afraid of sits a little proud of the rest. */
+  transform: rotate(calc((var(--i) - 2) * 5deg)) translateY(-8px) scale(1.1);
+  position: relative;
+  z-index: 1;
+}
+
+@keyframes deal-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px) rotate(0deg) scale(0.92);
+  }
+}
+
+.facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+}
+
+.facts span {
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--secondary);
+  padding: 7px 13px;
+  border-radius: 99px;
+  box-shadow: var(--ring);
+}
+
+@media (min-width: 720px) {
+  .hero {
+    grid-template-areas:
+      "copy art"
+      "form art";
+    grid-template-columns: 1.05fr 0.95fr;
+    align-items: center;
+    gap: 22px 30px;
+    padding: 34px 32px;
+  }
+
+  .hero-copy {
+    gap: 16px;
+    align-self: end;
+  }
+
+  .start {
+    align-self: start;
+  }
+}
+
+/* ── Lobby ──────────────────────────────────────────────────────────────── */
+
+.seats {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.seats li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 2px;
+  border-top: 1px solid var(--line);
+}
+
+.seats li:first-child {
+  border-top: 0;
+}
+
+.seats li span {
+  margin-right: auto;
+  font-weight: 800;
+}
+
+em {
+  font-style: normal;
+  font-size: 0.7rem;
+  font-weight: 800;
+  padding: 5px 10px;
+  border-radius: 7px;
+  background: rgba(250, 242, 221, 0.09);
+  color: var(--cream-2);
+}
+
+em.pale {
+  background: none;
+  color: var(--secondary);
+  padding: 5px 0;
+}
+
+/* ── Banner ─────────────────────────────────────────────────────────────── */
+
+.banner {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 18px;
+  background: var(--band);
+}
+
+.banner strong {
+  font-size: clamp(1.05rem, 0.95rem + 0.5vw, 1.3rem);
+  font-weight: 800;
+  letter-spacing: -0.025em;
+}
+
+.banner.reveal strong {
+  color: var(--dead);
+}
+
+.banner.over strong {
+  color: var(--cream);
+}
+
+.banner span {
+  margin-left: auto;
+  font-size: 0.8rem;
+  color: var(--secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Shelves ────────────────────────────────────────────────────────────── */
+
+.shelves {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 10px;
+}
+
+.shelf {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+}
+
+.shelf.you {
+  background: var(--band);
+}
+
+.shelf.turn {
+  box-shadow: inset 0 0 0 1.8px var(--cream);
+}
+
+.shelf.target {
+  box-shadow: inset 0 0 0 1.8px var(--dead);
+}
+
+.shelf.out {
+  opacity: 0.44;
+}
+
+.shelf-head,
+.shelf-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.who {
+  font-weight: 800;
+  margin-right: auto;
+  letter-spacing: -0.015em;
+}
+
+.pips {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  color: rgba(243, 241, 236, 0.34);
+}
+
+.pips i {
+  display: grid;
+  place-items: center;
+}
+
+.pip.won {
+  color: var(--cream);
+}
+
+.shelf-foot {
+  gap: 8px;
+  justify-content: flex-end;
+  min-height: 30px;
+}
+
+/* ── The table ──────────────────────────────────────────────────────────── */
+
+.table3d {
+  border-radius: 16px;
+  overflow: hidden;
+  background:
+    radial-gradient(120% 90% at 50% 0%, #1d2740 0%, #0f141d 70%);
+  box-shadow: var(--ring);
+  line-height: 0;
+  touch-action: manipulation;
+}
+
+.table3d canvas {
+  width: 100%;
+  display: block;
+}
+
+.tally {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: 0.78rem;
+  color: var(--secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.tally .good {
+  color: var(--good);
+}
+
+.tally .bad {
+  color: var(--dead);
+}
+
+/* ── Player controls ────────────────────────────────────────────────────── */
+
+.controls {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  position: sticky;
+  bottom: max(10px, env(safe-area-inset-bottom));
+  z-index: 2;
+}
+
+.hand {
+  display: flex;
+  gap: 10px;
+}
+
+.hand-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 16px;
+  border-radius: 11px;
+  font-size: 0.9rem;
+}
+
+.hand-btn .count {
+  font-variant-numeric: tabular-nums;
+  color: var(--secondary);
+}
+
+.hand-btn.dead:not(:disabled) {
+  color: var(--dead);
+  background: var(--dead-wash);
+  box-shadow: inset 0 0 0 1px rgba(255, 106, 90, 0.3), var(--lip);
+}
+
+.hand-btn.dead:not(:disabled):hover {
+  background: rgba(255, 106, 90, 0.26);
+}
+
+.hand-btn.dead:not(:disabled) .count {
+  color: var(--dead);
+}
+
+.bidbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bidbar output {
+  min-width: 48px;
+  text-align: center;
+  font-size: 1.45rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.step {
+  width: 48px;
+  padding: 15px 0;
+}
+
+.bidbar .primary {
+  margin-left: auto;
+}
+
+/* ── Log and rules ──────────────────────────────────────────────────────── */
+
+.log {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: var(--secondary);
+  max-height: 150px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--cream-line) transparent;
+}
+
+.log li:first-child {
+  color: var(--ink);
+  font-weight: 800;
+}
+
+.rules summary {
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.rules ol {
+  margin: 12px 0 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  color: var(--secondary);
+  font-size: 0.9rem;
+  max-width: 68ch;
+}
+
+@media (max-width: 480px) {
+  .app {
+    padding: 16px calc(12px + env(safe-area-inset-left)) calc(44px + env(safe-area-inset-bottom))
+      calc(12px + env(safe-area-inset-right));
+    gap: 12px;
+  }
+
+  .shelves {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  /* The table already draws every pile, so on a phone these rows are a status
+     line, not a second drawing of the same thing. */
+  .shelf {
+    padding: 12px 14px;
+    gap: 6px;
+  }
+
+  .shelf-foot:empty {
+    display: none;
+  }
+
+  .hero h2 {
+    line-height: 1.05;
+  }
+
+  /* Touch target, not decoration: this pill is how a table gets shared. */
+  .code {
+    min-height: 44px;
+    padding: 11px 15px;
+  }
+
+  .hand {
+    flex-direction: column;
+  }
+
+  .hand-btn {
+    justify-content: flex-start;
+    padding: 14px 16px;
+  }
+
+  .hand-btn .count {
+    margin-left: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+}

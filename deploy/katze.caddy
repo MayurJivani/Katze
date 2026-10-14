@@ -1,0 +1,13 @@
+http://katze.futile.studio {
+	encode zstd gzip
+
+	# No blanket Cache-Control: the relay already serves no-cache for the HTML
+	# and immutable for Vite's hashed assets. Overriding it here would throw the
+	# asset caching away to fix a problem that is already fixed.
+	reverse_proxy localhost:4331 {
+		# Every table shares one long-lived WebSocket. Left buffered, a player
+		# puts a box down and the other phones only see it when something else
+		# happens to flush the stream.
+		flush_interval -1
+	}
+}

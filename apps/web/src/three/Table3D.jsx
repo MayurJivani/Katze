@@ -1,0 +1,358 @@
+import { useEffect, useRef } from "react"
+import * as THREE from "three"
+import { house, matFace, tileBack, tileFace } from "./catArt"
+
+/*
+ * The table, as actual objects.
+ *
+ * Every mesh here is procedural: a cylinder for a tile, a rounded slab for a
+ * mat, a plane for the felt. The only authored content is the canvas art in
+ * catArt.js, used as texture. Budget at a full six-player table is roughly 30
+ * meshes, 3 lights and 14 textures, which holds 60fps on a phone.
+ *
+ * The scene is driven by the same redacted state the DOM gets, so it cannot
+ * render a face-down tile's face: that value is not in the payload.
+ */
+
+// A tile is a coaster, not a coin. The mat is sized around it: a closed pile
+// at the back left, a row of opened tiles across the front, all on the plate.
+const TILE_R = 0.66
+const TILE_H = 0.1
+const MAT = 3.4
+
+const tileGeo = new THREE.CylinderGeometry(TILE_R, TILE_R, TILE_H, 48)
+const matGeo = new THREE.BoxGeometry(MAT, 0.06, MAT)
+
+function texture(canvas) {
+  const t = new THREE.CanvasTexture(canvas)
+  t.colorSpace = THREE.SRGBColorSpace
+  t.anisotropy = 4
+  return t
+}
+
+/**
+ * Seats sit on a shallow arc with the viewer nearest the camera. Mats stay
+ * axis-aligned rather than rotated to face their player: a mat turned away
+ * from the camera means a name nobody can read, and reading the table is the
+ * whole job of this view.
+ */
+function seatPositions(count) {
+  if (count === 1) return [{ x: 0, z: 0 }]
+  const out = []
+  for (let i = 0; i < count; i++) {
+    if (i === 0) {
+      out.push({ x: 0, z: 2.35 })
+      continue
+    }
+    const others = count - 1
+    const t = others === 1 ? 0.5 : (i - 1) / (others - 1)
+    const spread = others <= 2 ? 4.2 : 3.9 * others
+    out.push({
+      x: (t - 0.5) * spread,
+      z: -1.75 + Math.abs(t - 0.5) * 1.4,
+    })
+  }
+  return out
+}
+
+export default function Table3D({ state, onOpen, canOpen }) {
+  const host = useRef(null)
+  const api = useRef(null)
+  const latest = useRef({ state, onOpen, canOpen })
+  latest.current = { state, onOpen, canOpen }
+  /** How many tiles each player had face up last build, so only new ones flip. */
+  const seen = useRef(new Map())
+
+  // Scene, lights and loop: built once, never torn down by a state change.
+  useEffect(() => {
+    const el = host.current
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
+    renderer.shadowMap.enabled = true
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap
+    el.appendChild(renderer.domElement)
+
+    const scene = new THREE.Scene()
+    const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 100)
+
+    const felt = new THREE.Mesh(
+      new THREE.PlaneGeometry(40, 40),
+      new THREE.MeshStandardMaterial({ color: 0x17202f, roughness: 0.95 }),
+    )
+    felt.rotation.x = -Math.PI / 2
+    felt.receiveShadow = true
+    scene.add(felt)
+
+    // One lamp over the table, plus enough ambient to keep the art readable.
+    scene.add(new THREE.HemisphereLight(0xdfe7ff, 0x0b0d12, 1.5))
+    const lamp = new THREE.DirectionalLight(0xfff2d8, 2.1)
+    lamp.position.set(2.5, 7, 3)
+    lamp.castShadow = true
+    lamp.shadow.mapSize.set(1024, 1024)
+    lamp.shadow.camera.top = 8
+    lamp.shadow.camera.bottom = -8
+    lamp.shadow.camera.left = -10
+    lamp.shadow.camera.right = 10
+    lamp.shadow.bias = -0.0015
+    scene.add(lamp)
+
+    const group = new THREE.Group()
+    scene.add(group)
+
+    const raycaster = new THREE.Raycaster()
+    const pointer = new THREE.Vector2()
+
+    const pick = (e) => {
+      const r = renderer.domElement.getBoundingClientRect()
+      pointer.x = ((e.clientX - r.left) / r.width) * 2 - 1
+      pointer.y = -((e.clientY - r.top) / r.height) * 2 + 1
+      raycaster.setFromCamera(pointer, camera)
+      const hit = raycaster.intersectObjects(group.children, true)[0]
+      let o = hit?.object
+      while (o && !o.userData.ownerId) o = o.parent
+      return o?.userData.ownerId ?? null
+    }
+
+    const onClick = (e) => {
+      const id = pick(e)
+      const { canOpen, onOpen } = latest.current
+      if (id && canOpen?.(id)) onOpen(id)
+    }
+    const onMove = (e) => {
+      const id = pick(e)
+      renderer.domElement.style.cursor = id && latest.current.canOpen?.(id) ? "pointer" : "default"
+    }
+    renderer.domElement.addEventListener("click", onClick)
+    renderer.domElement.addEventListener("pointermove", onMove)
+
+    /*
+     * Frame the table by measuring it, not by guessing: two seats and six
+     * seats are very different boxes, and a phone is a different window onto
+     * both. Hand-tuned camera numbers were wrong for every case but one.
+     */
+    const fit = { center: new THREE.Vector3(), halfW: 4, halfD: 4 }
+    const ELEV = 0.8
+    const applyCamera = () => {
+      const vFov = (camera.fov * Math.PI) / 180
+      const hFov = 2 * Math.atan(Math.tan(vFov / 2) * camera.aspect)
+      // A table is flat and wide, so width and depth need different sums: depth
+      // foreshortens by sin(elevation), width does not. Treating the footprint
+      // as a sphere (the obvious version) parked the camera about 40% too far.
+      const needW = fit.halfW / Math.tan(hFov / 2)
+      const needD = (fit.halfD * Math.sin(ELEV)) / Math.tan(vFov / 2)
+      const dist = Math.max(needW, needD) * 1.34
+      camera.position.set(
+        fit.center.x,
+        Math.sin(ELEV) * dist,
+        fit.center.z + Math.cos(ELEV) * dist,
+      )
+      camera.lookAt(fit.center)
+      camera.updateProjectionMatrix()
+    }
+
+    const resize = () => {
+      const w = el.clientWidth
+      const h = Math.max(280, Math.min(540, Math.round(w * 0.66)))
+      renderer.setSize(w, h, false)
+      camera.aspect = w / h
+      applyCamera()
+    }
+    resize()
+    const ro = new ResizeObserver(resize)
+    ro.observe(el)
+
+    const clock = new THREE.Clock()
+    let raf
+    const tick = () => {
+      const dt = Math.min(clock.getDelta(), 0.05)
+      for (const m of group.children) m.userData.update?.(dt)
+      renderer.render(scene, camera)
+      raf = requestAnimationFrame(tick)
+    }
+    tick()
+
+    const measure = () => {
+      // World matrices are stale right after a rebuild, and a Box3 built from
+      // stale matrices measures local space: every seat stacked at the origin.
+      group.updateMatrixWorld(true)
+      // Measure the pieces only. The turn halo pulses wider than the table and
+      // would quietly push the camera back every time it was drawn.
+      const box = new THREE.Box3()
+      group.traverse((o) => {
+        if (o.isMesh && !o.userData.noFit) box.expandByObject(o)
+      })
+      if (box.isEmpty()) return
+      const size = box.getSize(new THREE.Vector3())
+      box.getCenter(fit.center)
+      fit.center.y = 0
+      fit.halfW = Math.max(1.8, size.x / 2)
+      fit.halfD = Math.max(1.8, size.z / 2)
+      applyCamera()
+    }
+
+    api.current = { scene, group, renderer, textures: new Map(), measure }
+
+    return () => {
+      cancelAnimationFrame(raf)
+      ro.disconnect()
+      renderer.domElement.removeEventListener("click", onClick)
+      renderer.domElement.removeEventListener("pointermove", onMove)
+      for (const t of api.current.textures.values()) t.dispose()
+      renderer.dispose()
+      el.removeChild(renderer.domElement)
+      api.current = null
+    }
+  }, [])
+
+  // Rebuild the table whenever the hand changes. Six seats of tiles is cheap
+  // enough that diffing meshes would cost more code than it saves frames.
+  useEffect(() => {
+    const ctx = api.current
+    if (!ctx || !state) return
+    const { group, textures } = ctx
+
+    const tex = (key, make) => {
+      let t = textures.get(key)
+      if (!t) {
+        t = texture(make())
+        textures.set(key, t)
+      }
+      return t
+    }
+
+    for (const child of [...group.children]) {
+      group.remove(child)
+      child.traverse?.((o) => {
+        if (o.geometry && o.geometry !== tileGeo && o.geometry !== matGeo) o.geometry.dispose()
+        if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach((m) => m.dispose())
+      })
+    }
+
+    const seats = state.seats
+    const mine = Math.max(0, seats.findIndex((p) => p.id === state.you))
+    const order = seats.map((_, i) => seats[(mine + i) % seats.length])
+    const spots = seatPositions(order.length)
+
+    order.forEach((p, i) => {
+      const seat = seats.indexOf(p)
+      const h = house(seat)
+      const spot = spots[i]
+      const area = new THREE.Group()
+      area.position.set(spot.x, 0, spot.z)
+      area.userData.ownerId = p.id
+      group.add(area)
+
+      const matTex = tex(`mat:${p.id}:${p.name}:${p.points}`, () =>
+        matFace(seat, { name: p.name, points: p.points, pointsToWin: state.pointsToWin }),
+      )
+      const matMats = [
+        new THREE.MeshStandardMaterial({ color: h.ring, roughness: 0.8 }),
+        new THREE.MeshStandardMaterial({ map: matTex, roughness: 0.62 }),
+        new THREE.MeshStandardMaterial({ color: h.ring, roughness: 0.8 }),
+      ]
+      const mat = new THREE.Mesh(matGeo, [matMats[0], matMats[0], matMats[1], matMats[0], matMats[0], matMats[0]])
+      mat.position.set(0, 0.04, 0)
+      mat.receiveShadow = true
+      mat.castShadow = true
+      if (p.out) matMats.forEach((m) => ((m.transparent = true), (m.opacity = 0.35)))
+      area.add(mat)
+
+      // Live highlight: whose turn it is, and who can be opened next.
+      const ringColor = latest.current.canOpen?.(p.id) ? 0xff6a5a : state.turnId === p.id ? 0xfaf2dd : null
+      if (ringColor) {
+        const halo = new THREE.Mesh(
+          new THREE.RingGeometry(MAT * 0.455, MAT * 0.5, 80),
+          new THREE.MeshBasicMaterial({ color: ringColor, transparent: true, opacity: 0.9, side: THREE.DoubleSide }),
+        )
+        halo.rotation.x = -Math.PI / 2
+        halo.position.set(0, 0.095, 0)
+        halo.userData.noFit = true
+        area.add(halo)
+        let t = 0
+        halo.userData.update = (dt) => {
+          t += dt
+          halo.material.opacity = 0.55 + Math.sin(t * 3.4) * 0.3
+        }
+        area.userData.update = (dt) => halo.userData.update(dt)
+      }
+
+      const back = tex(`back:${seat}`, () => tileBack(seat))
+      const sideMat = new THREE.MeshStandardMaterial({ color: 0x241c12, roughness: 0.9 })
+
+      const makeTile = (topCanvasKey, topMake, flip) => {
+        const top = tex(topCanvasKey, topMake)
+        const tile = new THREE.Mesh(tileGeo, [
+          sideMat,
+          new THREE.MeshStandardMaterial({ map: top, roughness: 0.55 }),
+          new THREE.MeshStandardMaterial({ map: back, roughness: 0.55 }),
+        ])
+        tile.castShadow = true
+        tile.receiveShadow = true
+        if (flip) {
+          // The one authored moment: a tile turning over, once, on reveal.
+          tile.rotation.z = Math.PI
+          let t = 0
+          tile.userData.update = (dt) => {
+            t = Math.min(1, t + dt * 2.6)
+            const e = 1 - Math.pow(1 - t, 3)
+            tile.rotation.z = Math.PI * (1 - e)
+            tile.position.y = 0.09 + Math.sin(e * Math.PI) * 0.5
+          }
+        }
+        return tile
+      }
+
+      // Between rounds the table is empty, so the last reveal stays on it: the
+      // cats everyone just bet on, still face up, until somebody plays again.
+      const held = state.lastReveal?.seats.find((x) => x.id === p.id)
+      const faceUp = p.up.length ? p.up : (held?.up ?? [])
+
+      // Face up, laid out left to right in the order they were opened.
+      faceUp.forEach((card, k) => {
+        const dead = card === "dead"
+        const isNew = p.up.length > 0 && k >= (seen.current.get(p.id) ?? 0)
+        const tile = makeTile(`face:${seat}:${dead}`, () => tileFace(seat, { dead }), isNew)
+        const spread = (faceUp.length - 1) / 2
+        tile.position.set((k - spread) * 0.86, 0.08 + TILE_H / 2, 0.38)
+        area.add(tile)
+      })
+
+      // Face down, stacked, because only the top one can be opened.
+      const closed = p.stack ?? Array.from({ length: p.stackCount }, () => null)
+      closed.forEach((card, k) => {
+        const tile = new THREE.Mesh(tileGeo, [
+          sideMat,
+          new THREE.MeshStandardMaterial({ map: back, roughness: 0.55 }),
+          new THREE.MeshStandardMaterial({ map: back, roughness: 0.55 }),
+        ])
+        // Your own tiles tilt up a little: you are allowed to know yours.
+        if (card) {
+          tile.material[1] = new THREE.MeshStandardMaterial({
+            map: tex(`face:${seat}:${card === "dead"}`, () => tileFace(seat, { dead: card === "dead" })),
+            roughness: 0.55,
+          })
+        }
+        tile.castShadow = true
+        tile.position.set(-0.95, 0.08 + TILE_H / 2 + k * (TILE_H + 0.015), -0.85)
+        tile.rotation.y = k * 0.11
+        area.add(tile)
+      })
+
+      seen.current.set(p.id, p.up.length)
+
+      if (!faceUp.length && !closed.length) {
+        const ghost = new THREE.Mesh(
+          new THREE.RingGeometry(TILE_R * 0.88, TILE_R, 48),
+          new THREE.MeshBasicMaterial({ color: 0xfaf2dd, transparent: true, opacity: 0.16, side: THREE.DoubleSide }),
+        )
+        ghost.rotation.x = -Math.PI / 2
+        ghost.position.set(-0.95, 0.086, -0.85)
+        area.add(ghost)
+      }
+    })
+
+    ctx.measure()
+  }, [state, canOpen])
+
+  return <div className="table3d" ref={host} aria-hidden="true" />
+}
