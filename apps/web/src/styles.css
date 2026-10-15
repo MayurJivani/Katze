@@ -405,6 +405,86 @@ button.open:hover:not(:disabled) {
   }
 }
 
+/* ── Home scene, tutorial, log ──────────────────────────────────────────── */
+
+.home-scene {
+  grid-area: art;
+  border-radius: 11px;
+  overflow: hidden;
+  line-height: 0;
+  background: radial-gradient(90% 80% at 50% 0%, #1d2740 0%, #0f141d 72%);
+  box-shadow: inset 0 0 0 1px var(--cream-line);
+  touch-action: manipulation;
+}
+
+.home-scene canvas {
+  width: 100%;
+  display: block;
+}
+
+.tutorial {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.lesson {
+  background: var(--card);
+  border-radius: 16px;
+  box-shadow: var(--ring);
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.caption {
+  font-size: clamp(1.05rem, 0.95rem + 0.6vw, 1.35rem);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
+.ticks {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  gap: 6px;
+}
+
+.ticks li {
+  height: 3px;
+  flex: 1;
+  border-radius: 99px;
+  background: var(--line);
+}
+
+.ticks li.on {
+  background: var(--cream);
+}
+
+/* The log settles arguments; it does not need to be on screen to do that. */
+.log-box {
+  background: var(--card);
+  border-radius: 16px;
+  box-shadow: var(--ring);
+  padding: 14px 18px;
+}
+
+.log-box summary {
+  cursor: pointer;
+  font-weight: 800;
+  font-size: 0.86rem;
+  color: var(--secondary);
+}
+
+.log-box .log {
+  box-shadow: none;
+  background: none;
+  padding: 12px 0 0;
+  border-radius: 0;
+}
+
 /* ── Invite ─────────────────────────────────────────────────────────────── */
 
 .invite {
@@ -599,6 +679,32 @@ em.pale {
 .table3d canvas {
   width: 100%;
   display: block;
+}
+
+.table3d.mine {
+  box-shadow: inset 0 0 0 2px var(--cream-line);
+  animation: your-go 2.6s ease-in-out infinite;
+}
+
+@keyframes your-go {
+  50% {
+    box-shadow: inset 0 0 0 2px rgba(250, 242, 221, 0.5);
+  }
+}
+
+/* A dead cat is on the table. Nobody should be able to miss it. */
+.table3d.alarm {
+  animation: dead-found 0.7s ease-out 2;
+  box-shadow: inset 0 0 0 2px var(--dead);
+}
+
+@keyframes dead-found {
+  0% {
+    box-shadow: inset 0 0 0 10px rgba(255, 106, 90, 0.55);
+  }
+  100% {
+    box-shadow: inset 0 0 0 2px var(--dead);
+  }
 }
 
 .tally {

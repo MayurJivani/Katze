@@ -248,24 +248,63 @@ export function tileFace(seat, { dead = false, size = 512 } = {}) {
   return el
 }
 
-/** Back of a tile: the same plate with no cat, so no tile leaks what it holds. */
+/**
+ * Back of a tile: no cat anywhere on it, because this is the face every other
+ * player stares at all game. A medallion instead: two guilloche rings, a ring
+ * of blooms, and a paw print at the centre, all in the owner's house colours so
+ * you can still tell whose pile is whose from across the table.
+ */
 export function tileBack(seat, { size = 512 } = {}) {
   const h = house(seat)
   const el = canvas(size)
   const ctx = el.getContext("2d")
   const c = size / 2
   border(ctx, c, c, h)
+
   const r = size * 0.2
-  for (let ring = 0; ring < 2; ring++) {
-    const rr = r * (0.7 + ring * 0.55)
-    const n = 6 + ring * 6
-    for (let i = 0; i < n; i++) {
-      const a = (i / n) * TAU + ring * 0.3
-      bloom(ctx, c + Math.cos(a) * rr, c + Math.sin(a) * rr, r * (ring ? 0.12 : 0.16), h.trim, "#fdf6e6")
+
+  // Guilloche: two counter-rotating rosettes, the thing that makes a printed
+  // back hard to fake and pleasant to stare at.
+  ctx.save()
+  ctx.strokeStyle = h.ring
+  ctx.globalAlpha = 0.45
+  ctx.lineWidth = size * 0.004
+  for (const [petals, radius, phase] of [
+    [18, r * 1.5, 0],
+    [12, r * 1.08, Math.PI / 12],
+  ]) {
+    ctx.beginPath()
+    for (let i = 0; i <= 360; i++) {
+      const a = (i / 360) * TAU
+      const rad = radius * (0.84 + 0.16 * Math.cos(petals * a + phase))
+      const x = c + Math.cos(a) * rad
+      const y = c + Math.sin(a) * rad
+      i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)
     }
+    ctx.stroke()
   }
-  disc(ctx, c, c, r * 0.3, h.ring)
-  disc(ctx, c, c, r * 0.18, h.trim)
+  ctx.restore()
+
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * TAU + Math.PI / 8
+    bloom(ctx, c + Math.cos(a) * r * 1.26, c + Math.sin(a) * r * 1.26, r * 0.15, "#fdf6e6", h.trim)
+  }
+
+  // Paw print: four toes and a pad, the only figurative mark on the back.
+  disc(ctx, c, c, r * 0.62, h.ring)
+  disc(ctx, c, c, r * 0.54, h.trim)
+  ctx.save()
+  ctx.fillStyle = h.ring
+  ctx.beginPath()
+  ctx.ellipse(c, c + r * 0.16, r * 0.26, r * 0.21, 0, 0, TAU)
+  ctx.fill()
+  for (let i = 0; i < 4; i++) {
+    const a = -Math.PI / 2 + (i - 1.5) * 0.52
+    ctx.beginPath()
+    ctx.ellipse(c + Math.cos(a) * r * 0.3, c + Math.sin(a) * r * 0.3 + r * 0.04, r * 0.1, r * 0.13, a + Math.PI / 2, 0, TAU)
+    ctx.fill()
+  }
+  ctx.restore()
   return el
 }
 

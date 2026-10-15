@@ -2,8 +2,9 @@ import { useEffect, useMemo, useState } from "react"
 import { useRoom } from "./lib/useRoom"
 import { DeadCat, Fish, LiveCat } from "./Icons"
 import Table3D from "./three/Table3D"
-import TileStrip from "./TileStrip"
 import InviteQR from "./InviteQR"
+import HomeScene from "./three/HomeScene"
+import Tutorial from "./Tutorial"
 
 const store = {
   get name() {
@@ -25,6 +26,7 @@ const store = {
 export default function App() {
   const [join, setJoin] = useState(null)
   const [error, setError] = useState(null)
+  const [teaching, setTeaching] = useState(false)
   const { state, connected, identity, send } = useRoom({ join, onError: setError })
 
   useEffect(() => {
@@ -46,14 +48,16 @@ export default function App() {
           {error}
         </p>
       )}
-      {!state ? (
-        <Home onJoin={setJoin} waiting={!!join && !connected} />
+      {teaching ? (
+        <Tutorial onDone={() => setTeaching(false)} />
+      ) : !state ? (
+        <Home onJoin={setJoin} waiting={!!join && !connected} onLearn={() => setTeaching(true)} />
       ) : state.phase === "lobby" ? (
-        <Lobby state={state} send={send} />
+        <Lobby state={state} send={send} onLearn={() => setTeaching(true)} />
       ) : (
         <Table state={state} send={send} />
       )}
-      <Rules />
+      {!teaching && <Rules />}
     </div>
   )
 }
@@ -82,7 +86,8 @@ function Header({ code, connected, joined }) {
   )
 }
 
-function Home({ onJoin, waiting }) {
+function Home({ onJoin, waiting, onLearn }) {
+  const [found, setFound] = useState(null)
   const fromLink = new URLSearchParams(location.search).get("code") ?? ""
   const [name, setName] = useState(store.name)
   const [code, setCode] = useState(fromLink)
@@ -104,12 +109,15 @@ function Home({ onJoin, waiting }) {
       <section className="hero">
         <div className="hero-copy">
           <h2>Three live cats. One dead one.</h2>
-          <p className="lede">
-            Four closed boxes each. Put one down, lie about it, then bet how many you can open
-            before someone finds the dead cat.
+          <p className="lede" aria-live="polite">
+            {found === "cat"
+              ? "Alive. The next one might not be."
+              : found === "dead"
+                ? "That one was dead. Everything shuffles, and nobody knows again."
+                : "Four closed boxes. Open one and find out, then do it with friends and lie about it."}
           </p>
         </div>
-        <TileStrip />
+        <HomeScene onReveal={setFound} />
         <form className="start" onSubmit={submit}>
           <label>
             Your name
@@ -143,7 +151,10 @@ function Home({ onJoin, waiting }) {
             {joining ? "Join the table" : "Open a table"}
             </button>
             <button type="button" onClick={() => setJoining((v) => !v)} disabled={waiting}>
-            {joining ? "Start my own instead" : "I have a code"}
+              {joining ? "Start my own instead" : "I have a code"}
+            </button>
+            <button type="button" onClick={onLearn} disabled={waiting}>
+              How to play
             </button>
           </div>
           {waiting && <p className="muted">Looking for that table…</p>}
@@ -159,11 +170,13 @@ function Home({ onJoin, waiting }) {
   )
 }
 
-function Lobby({ state, send }) {
+function Lobby({ state, send, onLearn }) {
   const host = state.you === state.hostId
   const short = state.seats.length < 2
   return (
-    <section className="panel">
+    <>
+      <Table3D state={state} canOpen={() => false} canPlace={() => false} />
+      <section className="panel">
       <h2>At the table</h2>
       <ul className="seats">
         {state.seats.map((p) => (
@@ -182,29 +195,57 @@ function Lobby({ state, send }) {
         ))}
       </ul>
       <InviteQR url={`${location.origin}?code=${state.code}`} />
-      {host ? (
-        <button className="primary" disabled={short} onClick={() => send("start")}>
-          {short ? "Waiting for one more player" : "Deal the boxes"}
-        </button>
-      ) : (
-        <p className="muted">Waiting for the host to deal, or point a camera at the code above.</p>
-      )}
-    </section>
+      <div className="row">
+        {host && (
+          <button className="primary" disabled={short} onClick={() => send("start")}>
+            {short ? "Waiting for one more player" : "Deal the boxes"}
+          </button>
+        )}
+        <button onClick={onLearn}>First time? Watch how it plays</button>
+      </div>
+      {!host && <p className="muted">Waiting for the host to deal, or point a camera at the code.</p>}
+      </section>
+    </>
   )
 }
 
+const RESULT_HOLD_MS = 6500
+
 function Table({ state, send }) {
+  const [holding, setHolding] = useState(true)
+  useEffect(() => {
+    if (!state.lastReveal) return
+    setHolding(true)
+    const t = setTimeout(() => setHolding(false), RESULT_HOLD_MS)
+    return () => clearTimeout(t)
+  }, [state.lastReveal])
+  // Everything downstream sees a table that has already been cleared.
+  const shown = holding ? state : { ...state, lastReveal: null }
+
   const me = state.seats.find((p) => p.id === state.you)
   const yourTurn = state.turnId === state.you
   const opening = state.phase === "reveal" && state.bidderId === state.you
-  const openable = (id) =>
-    opening && id !== state.you && !!state.seats.find((p) => p.id === id && !p.out && p.stackCount > 0)
+  /*
+   * You turn every box over yourself, your own shelf first. While you still
+   * have one closed, yours is the only pile that answers a tap.
+   */
+  const mineClosed = (me?.stackCount ?? 0) > 0
+  const openable = (id) => {
+    if (!opening) return false
+    const p = state.seats.find((x) => x.id === id)
+    if (!p || p.out || p.stackCount < 1) return false
+    return mineClosed ? id === state.you : id !== state.you
+  }
 
   return (
     <>
-      <Banner state={state} yourTurn={yourTurn} opening={opening} />
+      <Banner state={shown} yourTurn={yourTurn} opening={opening} />
       <Table3D
-        state={state}
+        state={shown}
+        yourTurn={yourTurn}
+        alarm={
+          shown.seats.some((p) => p.up.includes("dead")) || shown.lastReveal?.outcome === "dead"
+        }
         canOpen={openable}
         onOpen={(id) => send("reveal", { targetId: id })}
         canPlace={(card) =>
@@ -244,6 +285,8 @@ function Banner({ state, yourTurn, opening }) {
   let tone = state.phase
   if (state.phase === "over") line = winner ? `${winner.name} wins the table` : "Game over"
   else if (state.phase === "reveal" && hitDead) line = "The dead cat"
+  else if (opening && state.seats.find((p) => p.id === state.you)?.stackCount > 0)
+    line = `${opened.length} of ${state.bid} alive. Open your own boxes first`
   else if (opening) line = `${opened.length} of ${state.bid} alive. Pick a neighbour's box`
   else if (state.phase === "reveal") line = `${turn?.name} is opening boxes`
   else if (last) {
@@ -252,7 +295,7 @@ function Banner({ state, yourTurn, opening }) {
     tone = last.outcome === "dead" ? "reveal" : "won"
     line =
       last.outcome === "dead"
-        ? `${by?.name} found the dead cat and lost a box`
+        ? `${by?.name} found the dead cat. One cat gone for good`
         : `All alive. ${by?.name} took a fish`
   } else if (yourTurn && state.phase === "bid") line = `Beat ${state.bid} or pass`
   else if (yourTurn) line = "Put a box down, or open the bidding"
@@ -375,11 +418,14 @@ function Controls({ state, me, yourTurn, send }) {
 
 function Log({ lines }) {
   return (
-    <ol className="log" aria-live="polite">
-      {[...lines].reverse().map((line, i) => (
-        <li key={`${i}-${line}`}>{line}</li>
-      ))}
-    </ol>
+    <details className="log-box">
+      <summary>Table log</summary>
+      <ol className="log">
+        {[...lines].reverse().map((line, i) => (
+          <li key={`${i}-${line}`}>{line}</li>
+        ))}
+      </ol>
+    </details>
   )
 }
 
@@ -391,9 +437,9 @@ function Rules() {
         <li>Everyone puts one box down face down, then takes turns adding more or opening the bidding.</li>
         <li>A bid says: I can open that many boxes without finding the dead cat.</li>
         <li>Raise or pass. The last player still bidding has to do the opening.</li>
-        <li>Your own shelf opens first, all of it, then one box at a time off anyone else.</li>
+        <li>You open the boxes by hand, one at a time: your own shelf first, then anyone else's.</li>
         <li>All live cats and you take a fish. Two fish wins the table.</li>
-        <li>The dead cat and you lose a box for good. Out of boxes, out of the game.</li>
+        <li>The dead cat and one of your cats is gone for good. Out of cats, out of the game.</li>
       </ol>
     </details>
   )

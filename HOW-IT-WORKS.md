@@ -38,9 +38,10 @@ serialized projection of another player's shelf contains no card identity at all
 ## Bidding, and the one rule that makes bluffing cost something
 
 The bid ceiling is the number of boxes actually on the table, which guarantees a challenge can
-always be completed. The order of opening is the part that matters: the bidder's own shelf opens
-first, all of it, automatically, before they may touch anyone else. A player who buried the dead cat
-and then bid high discovers it immediately, in front of everyone.
+always be completed. The order of opening is the part that matters: the bidder turns every box over by hand, one at a
+time, and their own shelf has to be empty before they may touch anyone else. Nothing opens itself,
+because the moment a bluffer turns over their own dead cat in front of everyone is the moment the
+bid was made for.
 
 A failed challenger loses one box at random. The printed rules let the owner of the revealed skull
 pick the card blind; the random discard is the common house simplification and is marked with a
@@ -90,6 +91,17 @@ many boxes that player has down.
 
 **A bid of every box on the table goes straight to the reveal.** Nobody can raise past the whole
 table, so asking three people to tap pass only delays the part they are waiting for.
+
+## Teaching it without words
+
+The tutorial is the game, not a diagram of it: eight steps, each one a state object in exactly the
+shape the relay sends, fed to the same table component a real game uses. There is no special
+rendering path, so the flips, the fan and the tumble a new player watches are the ones they will
+play with. It paces itself and any tap moves it on.
+
+The homepage is the same trick: four closed boxes, three live cats and one dead one, shuffled. Open
+one and find out. Find the dead one and everything reshuffles, which is the whole game in a sentence
+nobody has to read.
 
 ## The table is the control surface
 

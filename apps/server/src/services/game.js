@@ -9,10 +9,10 @@
  * Nobody knows which box is which until it is opened, including the player who
  * put it down, who is lying about it either way. Players stack boxes face down
  * on their own shelf, then one of them bids how many boxes can be opened
- * without finding the dead cat. Highest bidder opens: their own shelf first,
- * all of it, then one box at a time off any other shelf. All alive and the bid
- * is made, which earns a fish. The dead cat and they lose a box for good. Two
- * fish wins, and so does being the last player with boxes.
+ * without finding the dead cat. Highest bidder opens them by hand, one at a
+ * time, their own shelf first and then any other. All alive and the bid
+ * is made, which earns a fish. The dead cat and one of their cats is gone for
+ * good. Two fish wins, and so does being the last player still holding cats.
  */
 
 export const PHASE = { LOBBY: "lobby", PLACE: "place", BID: "bid", REVEAL: "reveal", OVER: "over" }
@@ -227,15 +227,17 @@ function beginReveal(room) {
   room.turn = seatIndex(room, room.bidderId)
   const p = seat(room, room.bidderId)
   note(room, `${p.name} must open ${room.bid}`)
-  // Own shelf first, top down, all of it, the rule that makes a bluff cost something.
-  while (p.stack.length) p.up.push(p.stack.pop())
-  settle(room)
+  // Nothing opens itself. The challenger turns every box over by hand, their
+  // own first, which is where a bluff is paid for in front of everyone.
 }
 
 export function reveal(room, id, targetId) {
   if (room.phase !== PHASE.REVEAL) bad("Nothing to open.")
   if (id !== room.bidderId) bad("Only the bidder opens boxes.")
-  if (targetId === id) bad("Your own shelf is already open.")
+  const me = seat(room, id)
+  // Your own shelf is emptied first, one box at a time, before you may touch
+  // anyone else's.
+  if (me.stack.length && targetId !== id) bad("Open your own boxes first.")
   const t = seat(room, targetId)
   if (!t || t.out) bad("No such player.")
   if (!t.stack.length) bad("Nothing left on that shelf.")
@@ -250,7 +252,7 @@ function settle(room) {
   const challenger = seat(room, room.bidderId)
 
   if (flipped.includes(DEAD)) {
-    note(room, `The dead cat. ${challenger.name} loses a box`)
+    note(room, `The dead cat. ${challenger.name} loses one for good`)
     return afterRoundEnd(room, challenger.id, challenger.id)
   }
   if (flipped.length >= room.bid) {
@@ -325,7 +327,7 @@ function afterRoundEnd(room, starterId, loserId = null) {
   }
 
   for (const p of room.seats) {
-    if (!p.out && owned(p) === 0) foldOut(room, p, "no boxes left")
+    if (!p.out && owned(p) === 0) foldOut(room, p, "no cats left")
   }
 
   room.lastReveal = reveal && { ...reveal, lost }

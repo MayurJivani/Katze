@@ -82,7 +82,8 @@ test("opening only live cats earns a fish, and two fish takes the game", () => {
     G.pass(room, turnId(room))
     G.pass(room, turnId(room))
     assert.equal(room.phase, "reveal")
-    // Own shelf opened itself; one more box off a neighbour closes the bid of 2.
+    // Every box is turned over by hand: your own, then a neighbour's.
+    G.reveal(room, room.bidderId, room.bidderId)
     G.reveal(room, room.bidderId, room.seats.find((p) => p.id !== room.bidderId).id)
     assert.equal(room.seats[0].points, target)
   }
@@ -93,13 +94,24 @@ test("opening only live cats earns a fish, and two fish takes the game", () => {
 test("the bidder's own shelf is opened in full before anyone else is touched", () => {
   const room = table()
   for (let round = 0; round < 2; round++) for (const id of ["p0", "p1", "p2"]) G.place(room, id, "cat")
-  G.bid(room, "p0", 3) // two on their own mat, so one card has to come off a neighbour
+  G.bid(room, "p0", 3) // two on their own mat, so one box has to come off a neighbour
   G.pass(room, "p1")
   G.pass(room, "p2")
+
+  // Nothing opened itself, and a neighbour cannot be touched yet.
+  assert.equal(room.seats[0].up.length, 0)
+  assert.throws(() => G.reveal(room, "p0", "p1"), /your own boxes first/i)
+
+  G.reveal(room, "p0", "p0")
+  assert.equal(room.seats[0].up.length, 1)
+  assert.throws(() => G.reveal(room, "p0", "p1"), /your own boxes first/i)
+
+  G.reveal(room, "p0", "p0")
   assert.equal(room.seats[0].stack.length, 0)
-  assert.equal(room.seats[0].up.length, 2)
-  // Nobody else was exposed by the server.
   assert.deepEqual(room.seats.slice(1).map((p) => p.up.length), [0, 0])
+
+  // Only now does a neighbour's shelf open.
+  assert.doesNotThrow(() => G.reveal(room, "p0", "p1"))
 })
 
 test("opening the dead cat costs the bidder a box for good", () => {
@@ -110,7 +122,7 @@ test("opening the dead cat costs the bidder a box for good", () => {
   G.bid(room, "p0", 2)
   G.pass(room, "p1")
   G.pass(room, "p2")
-  // p0's own dead cat surfaces the moment their shelf opens, so the bid dies there.
+  G.reveal(room, "p0", "p0") // their own box, and it is the dead cat
   assert.equal(held(room.seats[0]), 3)
   assert.equal(room.seats[0].points, 0)
   assert.equal(room.phase, "place")
@@ -126,6 +138,7 @@ test("a player who runs out of boxes is out, and the last one left wins", () => 
   G.place(room, "p1", "cat")
   // Both boxes bid, so the reveal starts without anyone passing.
   G.bid(room, "p0", 2)
+  G.reveal(room, "p0", "p0") // the one box they have left, and it is dead
   assert.equal(room.seats[0].out, true)
   assert.equal(room.phase, "over")
   assert.equal(room.winnerId, "p1")
@@ -160,6 +173,7 @@ test("what was turned over stays on the table until the next round starts", () =
   G.bid(room, "p0", 2)
   G.pass(room, "p1")
   G.pass(room, "p2")
+  G.reveal(room, "p0", "p0")
   G.reveal(room, "p0", "p1")
 
   // Round is over and the shelves are collected, but the reveal is still there.

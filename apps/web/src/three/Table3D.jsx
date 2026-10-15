@@ -55,7 +55,7 @@ function seatPositions(count) {
   return out
 }
 
-export default function Table3D({ state, onOpen, canOpen, onPlace, canPlace }) {
+export default function Table3D({ state, onOpen, canOpen, onPlace, canPlace, yourTurn, alarm }) {
   const host = useRef(null)
   const api = useRef(null)
   const latest = useRef({ state, onOpen, canOpen, onPlace, canPlace })
@@ -194,7 +194,8 @@ export default function Table3D({ state, onOpen, canOpen, onPlace, canPlace }) {
       // Anything clickable rises under the pointer. Nothing else in the scene
       // moves on hover, so the lift reads as "this one".
       for (const m of liftable.current) {
-        const want = m.userData.restY + (hovered.current === m ? 0.34 : 0)
+        const beat = m.userData.handCard ? Math.sin(clock.elapsedTime * 2.4) * 0.06 + 0.06 : 0
+        const want = m.userData.restY + beat + (hovered.current === m ? 0.34 : 0)
         m.position.y += (want - m.position.y) * Math.min(1, dt * 14)
       }
       renderer.render(scene, camera)
@@ -403,13 +404,8 @@ export default function Table3D({ state, onOpen, canOpen, onPlace, canPlace }) {
           new THREE.MeshStandardMaterial({ map: back, roughness: 0.55 }),
           new THREE.MeshStandardMaterial({ map: back, roughness: 0.55 }),
         ])
-        // Your own tiles tilt up a little: you are allowed to know yours.
-        if (card) {
-          tile.material[1] = new THREE.MeshStandardMaterial({
-            map: tex(`face:${seat}:${card === "dead"}`, () => tileFace(seat, { dead: card === "dead" })),
-            roughness: 0.55,
-          })
-        }
+        // Face down means face down, including yours. You are the only one who
+        // knows what is under there, and remembering it is the game.
         tile.castShadow = true
         // A real pile: each box sits squarely on the one below, turned a little.
         tile.position.set(-1.05, 0.08 + TILE_H / 2 + k * (TILE_H + 0.012), -0.95)
@@ -540,5 +536,11 @@ export default function Table3D({ state, onOpen, canOpen, onPlace, canPlace }) {
     }
   }, [state, canOpen])
 
-  return <div className="table3d" ref={host} aria-hidden="true" />
+  return (
+    <div
+      className={`table3d${yourTurn ? " mine" : ""}${alarm ? " alarm" : ""}`}
+      ref={host}
+      aria-hidden="true"
+    />
+  )
 }
