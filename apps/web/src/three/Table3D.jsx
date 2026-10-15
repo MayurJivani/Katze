@@ -55,15 +55,18 @@ function seatPositions(count) {
   return out
 }
 
-export default function Table3D({ state, onOpen, canOpen }) {
+export default function Table3D({ state, onOpen, canOpen, onPlace, canPlace }) {
   const host = useRef(null)
   const api = useRef(null)
-  const latest = useRef({ state, onOpen, canOpen })
-  latest.current = { state, onOpen, canOpen }
+  const latest = useRef({ state, onOpen, canOpen, onPlace, canPlace })
+  latest.current = { state, onOpen, canOpen, onPlace, canPlace }
   /** How many tiles each player had face up last build, so only new ones flip. */
   const seen = useRef(new Map())
   /** The last reveal already played out, so a rebuild does not replay it. */
   const played = useRef(null)
+  /** Meshes that answer the pointer, and which one it is on. */
+  const liftable = useRef([])
+  const hovered = useRef(null)
 
   // Scene, lights and loop: built once, never torn down by a state change.
   useEffect(() => {
@@ -104,26 +107,46 @@ export default function Table3D({ state, onOpen, canOpen }) {
     const raycaster = new THREE.Raycaster()
     const pointer = new THREE.Vector2()
 
+    /*
+     * What the pointer is actually over. A token in your hand wins over the
+     * shelf it is sitting in front of, because the token is the smaller and
+     * more deliberate target.
+     */
     const pick = (e) => {
       const r = renderer.domElement.getBoundingClientRect()
       pointer.x = ((e.clientX - r.left) / r.width) * 2 - 1
       pointer.y = -((e.clientY - r.top) / r.height) * 2 + 1
       raycaster.setFromCamera(pointer, camera)
-      const hit = raycaster.intersectObjects(group.children, true)[0]
-      let o = hit?.object
-      while (o && !o.userData.ownerId) o = o.parent
-      return o?.userData.ownerId ?? null
+      const { canOpen, canPlace } = latest.current
+      for (const hit of raycaster.intersectObjects(group.children, true)) {
+        let o = hit.object
+        while (o && !o.userData.handCard && !o.userData.ownerId) o = o.parent
+        if (!o) continue
+        if (o.userData.handCard) {
+          if (canPlace?.(o.userData.handCard)) return { kind: "place", card: o.userData.handCard, mesh: o }
+          continue
+        }
+        if (canOpen?.(o.userData.ownerId)) return { kind: "open", id: o.userData.ownerId, mesh: o }
+      }
+      return null
     }
 
     const onClick = (e) => {
-      const id = pick(e)
-      const { canOpen, onOpen } = latest.current
-      if (id && canOpen?.(id)) onOpen(id)
+      const target = pick(e)
+      if (!target) return
+      const { onOpen, onPlace } = latest.current
+      if (target.kind === "place") onPlace?.(target.card)
+      else onOpen?.(target.id)
     }
     const onMove = (e) => {
-      const id = pick(e)
-      renderer.domElement.style.cursor = id && latest.current.canOpen?.(id) ? "pointer" : "default"
+      const target = pick(e)
+      renderer.domElement.style.cursor = target ? "pointer" : "default"
+      hovered.current = target?.mesh ?? null
     }
+    const onLeave = () => {
+      hovered.current = null
+    }
+    renderer.domElement.addEventListener("pointerleave", onLeave)
     renderer.domElement.addEventListener("click", onClick)
     renderer.domElement.addEventListener("pointermove", onMove)
 
@@ -168,6 +191,12 @@ export default function Table3D({ state, onOpen, canOpen }) {
     const tick = () => {
       const dt = Math.min(clock.getDelta(), 0.05)
       for (const m of group.children) m.userData.update?.(dt)
+      // Anything clickable rises under the pointer. Nothing else in the scene
+      // moves on hover, so the lift reads as "this one".
+      for (const m of liftable.current) {
+        const want = m.userData.restY + (hovered.current === m ? 0.34 : 0)
+        m.position.y += (want - m.position.y) * Math.min(1, dt * 14)
+      }
       renderer.render(scene, camera)
       raf = requestAnimationFrame(tick)
     }
@@ -199,6 +228,7 @@ export default function Table3D({ state, onOpen, canOpen }) {
       ro.disconnect()
       renderer.domElement.removeEventListener("click", onClick)
       renderer.domElement.removeEventListener("pointermove", onMove)
+      renderer.domElement.removeEventListener("pointerleave", onLeave)
       for (const t of api.current.textures.values()) t.dispose()
       renderer.dispose()
       el.removeChild(renderer.domElement)
@@ -231,6 +261,8 @@ export default function Table3D({ state, onOpen, canOpen }) {
     }
 
     const areas = new Map()
+    liftable.current = []
+    hovered.current = null
     const seats = state.seats
     const mine = Math.max(0, seats.findIndex((p) => p.id === state.you))
     const order = seats.map((_, i) => seats[(mine + i) % seats.length])
@@ -283,7 +315,7 @@ export default function Table3D({ state, onOpen, canOpen }) {
       const back = tex(`back:${seat}`, () => tileBack(seat))
       const sideMat = new THREE.MeshStandardMaterial({ color: 0x241c12, roughness: 0.9 })
 
-      const makeTile = (topCanvasKey, topMake, flip) => {
+      const makeTile = (topCanvasKey, topMake, flip, order = 0) => {
         const top = tex(topCanvasKey, topMake)
         const tile = new THREE.Mesh(tileGeo, [
           sideMat,
@@ -301,8 +333,15 @@ export default function Table3D({ state, onOpen, canOpen }) {
            */
           const restY = 0.08 + TILE_H / 2
           tile.rotation.z = Math.PI
+          // One box at a time: a shelf opening all at once is a blur, and
+          // watching them come up one by one is the whole moment.
+          let wait = order * 0.55
           let t = 0
           tile.userData.update = (dt) => {
+            if (wait > 0) {
+              wait -= dt
+              return
+            }
             t = Math.min(1.6, t + dt * 1.9)
             const e = 1 - Math.pow(1 - Math.min(1, t), 3)
             tile.rotation.z = Math.PI * (1 - e)
@@ -331,10 +370,28 @@ export default function Table3D({ state, onOpen, canOpen }) {
       // Face up, laid out left to right in the order they were opened.
       faceUp.forEach((card, k) => {
         const dead = card === "dead"
-        const isNew = p.up.length > 0 && k >= (seen.current.get(p.id) ?? 0)
-        const tile = makeTile(`face:${seat}:${dead}`, () => tileFace(seat, { dead }), isNew)
+        const alreadyUp = seen.current.get(p.id) ?? 0
+        const isNew = p.up.length > 0 && k >= alreadyUp
+        const tile = makeTile(`face:${seat}:${dead}`, () => tileFace(seat, { dead }), isNew, k - alreadyUp)
+
+        /*
+         * Four boxes this size cannot sit side by side on one mat, so the row
+         * spreads as wide as the mat allows and fans past that: each box then
+         * rests on the one before instead of intersecting it.
+         */
+        const room = MAT - TILE_R * 2 - 0.4
+        const gap = faceUp.length > 1 ? Math.min(TILE_R * 2.15, room / (faceUp.length - 1)) : 0
+        const stacked = gap > 0 && gap < TILE_R * 2
         const spread = (faceUp.length - 1) / 2
-        tile.position.set((k - spread) * 0.86, 0.08 + TILE_H / 2, 0.38)
+        tile.position.set(
+          (k - spread) * gap,
+          0.08 + TILE_H / 2 + (stacked ? k * TILE_H * 0.5 : 0),
+          0.45,
+        )
+        if (stacked) tile.rotation.y = k * 0.14
+        // The shake reads this, and an unset rest position writes NaN into the
+        // transform, which makes the box disappear instead of wobble.
+        tile.userData.restX = tile.position.x
         area.add(tile)
       })
 
@@ -372,6 +429,43 @@ export default function Table3D({ state, onOpen, canOpen }) {
         area.add(ghost)
       }
     })
+
+    /*
+     * Your hand, face up on the table in front of you, one token per box you
+     * still hold. It is always drawn, dimmed when you cannot act, so the frame
+     * does not jump every time your turn comes round and so you can always see
+     * what you are holding without reading a number.
+     */
+    const you = seats.find((p) => p.id === state.you)
+    const mySeat = seats.indexOf(you)
+    if (you && !you.out && you.hand && areas.has(you.id)) {
+      const hand = [
+        ...Array(you.hand.cat).fill("cat"),
+        ...Array(you.hand.dead).fill("dead"),
+      ]
+      const back = tex(`back:${mySeat}`, () => tileBack(mySeat))
+      hand.forEach((card, i) => {
+        const dead = card === "dead"
+        const live = latest.current.canPlace?.(card)
+        const mats = [
+          new THREE.MeshStandardMaterial({ color: 0x241c12, roughness: 0.9, transparent: true, opacity: live ? 1 : 0.5 }),
+          new THREE.MeshStandardMaterial({
+            map: tex(`face:${mySeat}:${dead}`, () => tileFace(mySeat, { dead })),
+            roughness: 0.55,
+            transparent: true,
+            opacity: live ? 1 : 0.5,
+          }),
+          new THREE.MeshStandardMaterial({ map: back, roughness: 0.55, transparent: true, opacity: live ? 1 : 0.5 }),
+        ]
+        const token = new THREE.Mesh(tileGeo, mats)
+        token.castShadow = true
+        token.position.set((i - (hand.length - 1) / 2) * (TILE_R * 2.2), TILE_H / 2 + 0.02, 3.5)
+        token.userData.handCard = card
+        token.userData.restY = token.position.y
+        if (live) liftable.current.push(token)
+        areas.get(you.id).add(token)
+      })
+    }
 
     ctx.measure()
 
@@ -420,20 +514,21 @@ export default function Table3D({ state, onOpen, canOpen }) {
     if (state.lastReveal.outcome === "fish" && areas.has(state.lastReveal.by)) {
       // A made bid: one ring off the shelf that pulled it off.
       const ring = new THREE.Mesh(
-        new THREE.RingGeometry(MAT * 0.3, MAT * 0.34, 72),
+        new THREE.RingGeometry(MAT * 0.17, MAT * 0.195, 72),
         new THREE.MeshBasicMaterial({ color: 0xfaf2dd, transparent: true, side: THREE.DoubleSide }),
       )
       ring.rotation.x = -Math.PI / 2
-      ring.position.y = 0.1
+      // Under the boxes: a ring drawn over them reads as a rendering fault.
+      ring.position.set(0, 0.075, 0.45)
       ring.userData.noFit = true
       areas.get(state.lastReveal.by).add(ring)
       let t = 0
       const pulse = (dt) => {
         t += dt
         const e = Math.min(1, t / 1.1)
-        const scale = 0.6 + e * 1.5
+        const scale = 0.5 + e * 1.3
         ring.scale.set(scale, scale, scale)
-        ring.material.opacity = 0.85 * (1 - e)
+        ring.material.opacity = 0.5 * (1 - e)
         if (e >= 1) ring.visible = false
       }
       const area = areas.get(state.lastReveal.by)

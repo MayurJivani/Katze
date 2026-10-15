@@ -91,6 +91,22 @@ many boxes that player has down.
 **A bid of every box on the table goes straight to the reveal.** Nobody can raise past the whole
 table, so asking three people to tap pass only delays the part they are waiting for.
 
+## The table is the control surface
+
+Your hand is on the table as one token per box you hold, always drawn so the camera framing does not
+jump when your turn arrives. Tap a token to put it down; tap a neighbour's pile to open it. Anything
+clickable rises under the pointer, and nothing else in the scene moves on hover, so the lift means
+"this one".
+
+The buttons that used to do those jobs are still in the DOM and still focusable, just not drawn:
+`button.reach` clips them to a pixel and restores them on `:focus-visible`, so a keyboard or screen
+reader has the same game a pointer does. That rule has to sit last in the stylesheet, since the
+component rules it hides are single-class selectors too.
+
+Boxes open one at a time (each flip waits `index * 0.55s`), because a shelf of four opening at once
+is a blur. The opened row spreads as wide as the mat allows and fans past that, so boxes never
+intersect: four of them cannot fit side by side on one mat at this size.
+
 ## The reveal stays on the table
 
 A successful challenge used to collect the table in the same tick it resolved, which meant nobody

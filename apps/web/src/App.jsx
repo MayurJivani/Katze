@@ -203,7 +203,15 @@ function Table({ state, send }) {
   return (
     <>
       <Banner state={state} yourTurn={yourTurn} opening={opening} />
-      <Table3D state={state} canOpen={openable} onOpen={(id) => send("reveal", { targetId: id })} />
+      <Table3D
+        state={state}
+        canOpen={openable}
+        onOpen={(id) => send("reveal", { targetId: id })}
+        canPlace={(card) =>
+          yourTurn && state.phase === "place" && (me?.hand?.[card] ?? 0) > 0
+        }
+        onPlace={(card) => send("place", { card })}
+      />
       <div className="shelves">
         {state.seats.map((p) => (
           <Shelf key={p.id} p={p} state={state} canOpen={openable(p.id)} onOpen={() => send("reveal", { targetId: p.id })} />
@@ -299,8 +307,8 @@ function Shelf({ p, state, canOpen, onOpen }) {
         {p.passed && state.phase === "bid" && <em className="pale">passed</em>}
         {!p.connected && !p.out && <em className="pale">away</em>}
         {canOpen && (
-          <button className="tiny open" onClick={onOpen}>
-            open a box
+          <button className="tiny open reach" onClick={onOpen}>
+            Open a box on {p.name}'s shelf
           </button>
         )}
       </div>
@@ -321,25 +329,31 @@ function Controls({ state, me, yourTurn, send }) {
 
   if (!me || me.out) return <p className="muted center">You are out. Stay and watch how it ends.</p>
   if (state.phase === "reveal") return null
+  const prompt = canPlace
+    ? "Tap a box in your hand to put it down"
+    : state.phase === "bid" && yourTurn
+      ? "Beat the bid or pass"
+      : null
 
   return (
     <section className="controls">
       <div className="hand">
         <button
-          className="hand-btn live"
+          className="hand-btn live reach"
           disabled={!canPlace || me.hand.cat < 1}
           onClick={() => send("place", { card: "cat" })}
         >
-          <LiveCat size={22} /> put down a live cat <span className="count">{me.hand.cat}</span>
+          <LiveCat size={22} /> Put down a live cat <span className="count">{me.hand.cat}</span>
         </button>
         <button
-          className="hand-btn dead"
+          className="hand-btn dead reach"
           disabled={!canPlace || me.hand.dead < 1}
           onClick={() => send("place", { card: "dead" })}
         >
-          <DeadCat size={22} /> put down the dead cat <span className="count">{me.hand.dead}</span>
+          <DeadCat size={22} /> Put down the dead cat <span className="count">{me.hand.dead}</span>
         </button>
       </div>
+      {prompt && <p className="prompt">{prompt}</p>}
       <div className="bidbar">
         <button className="step" aria-label="lower the bid" disabled={!canBid || clamped <= floor} onClick={() => setAmount(clamped - 1)}>
           −

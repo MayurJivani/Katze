@@ -778,3 +778,39 @@ em.pale {
     animation: none !important;
   }
 }
+
+/*
+ * Reachable but not drawn: the table itself is the control now, and these stay
+ * for anyone driving with a keyboard or a screen reader. Visible again the
+ * moment one is focused, so a keyboard user can see what they are on.
+ */
+button.reach {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  flex: 0 0 auto;
+  border: 0;
+  box-shadow: none;
+}
+
+button.reach:focus-visible {
+  position: static;
+  width: auto;
+  height: auto;
+  margin: 0;
+  padding: 13px 18px;
+  overflow: visible;
+  clip-path: none;
+}
+
+.prompt {
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: var(--secondary);
+  text-align: center;
+}
