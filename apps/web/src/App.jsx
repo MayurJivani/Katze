@@ -3,6 +3,7 @@ import { useRoom } from "./lib/useRoom"
 import { DeadCat, Fish, LiveCat } from "./Icons"
 import Table3D from "./three/Table3D"
 import TileStrip from "./TileStrip"
+import InviteQR from "./InviteQR"
 
 const store = {
   get name() {
@@ -180,12 +181,13 @@ function Lobby({ state, send }) {
           </li>
         ))}
       </ul>
+      <InviteQR url={`${location.origin}?code=${state.code}`} />
       {host ? (
         <button className="primary" disabled={short} onClick={() => send("start")}>
           {short ? "Waiting for one more player" : "Deal the boxes"}
         </button>
       ) : (
-        <p className="muted">Waiting for the host to deal. Send anyone else the table code.</p>
+        <p className="muted">Waiting for the host to deal, or point a camera at the code above.</p>
       )}
     </section>
   )
@@ -226,18 +228,32 @@ function Banner({ state, yourTurn, opening }) {
   const winner = state.seats.find((p) => p.id === state.winnerId)
   const bidder = state.seats.find((p) => p.id === state.bidderId)
 
+  const opened = state.seats.flatMap((p) => p.up)
+  const hitDead = opened.includes("dead")
+  const last = state.lastReveal
+
   let line
+  let tone = state.phase
   if (state.phase === "over") line = winner ? `${winner.name} wins the table` : "Game over"
-  else if (opening) line = `Open ${state.bid}. Pick a neighbour's box`
+  else if (state.phase === "reveal" && hitDead) line = "The dead cat"
+  else if (opening) line = `${opened.length} of ${state.bid} alive. Pick a neighbour's box`
   else if (state.phase === "reveal") line = `${turn?.name} is opening boxes`
-  else if (yourTurn && state.phase === "bid") line = `Beat ${state.bid} or pass`
+  else if (last) {
+    // Between rounds the last result is the most useful thing on screen.
+    const by = state.seats.find((p) => p.id === last.by)
+    tone = last.outcome === "dead" ? "reveal" : "won"
+    line =
+      last.outcome === "dead"
+        ? `${by?.name} found the dead cat and lost a box`
+        : `All alive. ${by?.name} took a fish`
+  } else if (yourTurn && state.phase === "bid") line = `Beat ${state.bid} or pass`
   else if (yourTurn) line = "Put a box down, or open the bidding"
   else line = `${turn?.name ?? "Someone"} is ${state.phase === "bid" ? "bidding" : "choosing a box"}`
 
   return (
-    <div className={`banner ${state.phase}`} role="status" aria-live="polite">
+    <div className={`banner ${tone}`} role="status" aria-live="polite">
       <strong>{line}</strong>
-      {state.bid > 0 && state.phase !== "over" && (
+      {state.bid > 0 && state.phase !== "over" && !last && (
         <span>
           bid {state.bid} by {bidder?.name}
         </span>
@@ -295,7 +311,9 @@ function Shelf({ p, state, canOpen, onOpen }) {
 function Controls({ state, me, yourTurn, send }) {
   const canPlace = yourTurn && state.phase === "place" && me && me.handCount > 0
   const canBid = yourTurn && (state.phase === "bid" || (state.phase === "place" && state.biddingOpen))
-  const floor = state.bid + 1
+  // The server decides the floor: it is your own pile plus one, so a bid always
+  // has to reach past boxes you already know the contents of.
+  const floor = state.yourMinBid ?? state.bid + 1
   const [amount, setAmount] = useState(floor)
   const clamped = useMemo(() => Math.min(Math.max(amount, floor), state.maxBid), [amount, floor, state.maxBid])
 

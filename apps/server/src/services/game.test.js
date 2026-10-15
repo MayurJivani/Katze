@@ -30,7 +30,7 @@ test("bidding is closed until every player has put a box down", () => {
   assert.throws(() => G.bid(room, "p1", 1), /before the bidding opens/)
   openBidding(room) // p1 and p2 put theirs down, turn comes back to p0
   assert.equal(turnId(room), "p0")
-  assert.doesNotThrow(() => G.bid(room, "p0", 1))
+  assert.doesNotThrow(() => G.bid(room, "p0", 2))
 })
 
 test("a bid cannot exceed the boxes actually on the table", () => {
@@ -44,8 +44,34 @@ test("out of turn and under the standing bid are both refused", () => {
   openBidding(room)
   G.bid(room, "p0", 2)
   assert.throws(() => G.bid(room, "p0", 3), /Not your turn/)
-  assert.throws(() => G.bid(room, "p1", 2), /higher than 2/)
+  assert.throws(() => G.bid(room, "p1", 2), /at least 3/)
   assert.throws(() => G.pass(room, "p2"), /Not your turn/)
+})
+
+test("a bid has to reach past your own shelf", () => {
+  const room = table()
+  for (const id of ["p0", "p1", "p2"]) G.place(room, id, "cat")
+  G.place(room, "p0", "cat") // p0 now has two of their own buried
+  G.place(room, "p1", "cat")
+  G.place(room, "p2", "cat")
+
+  // Two of the six boxes are p0's own and open regardless, so two is free.
+  assert.throws(() => G.bid(room, "p0", 2), /at least 3/)
+  assert.doesNotThrow(() => G.bid(room, "p0", 3))
+})
+
+test("a bid of every box on the table goes straight to the reveal", () => {
+  const room = table()
+  openBidding(room, "cat")
+  G.bid(room, "p0", 3) // three boxes down, three bid: nobody can raise
+
+  assert.equal(room.phase, "reveal")
+  assert.deepEqual(
+    room.seats.filter((p) => p.passed).map((p) => p.id),
+    [],
+    "nobody should have had to tap pass",
+  )
+  assert.match(room.log.join(" "), /Nobody can raise/)
 })
 
 test("opening only live cats earns a fish, and two fish takes the game", () => {
@@ -98,8 +124,8 @@ test("a player who runs out of boxes is out, and the last one left wins", () => 
   Object.assign(room.seats[0], { cat: 0, dead: 1 })
   G.place(room, "p0", "dead")
   G.place(room, "p1", "cat")
+  // Both boxes bid, so the reveal starts without anyone passing.
   G.bid(room, "p0", 2)
-  G.pass(room, "p1")
   assert.equal(room.seats[0].out, true)
   assert.equal(room.phase, "over")
   assert.equal(room.winnerId, "p1")

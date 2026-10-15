@@ -80,6 +80,17 @@ at the origin, and the camera dived into the table.
 The one piece of motion is a tile turning over. Only newly opened tiles animate, tracked by how many
 each player had face up on the previous render, so a state update does not replay every flip.
 
+## Two house rules the printed game does not have
+
+**A bid has to reach past your own shelf.** Your own boxes open in full whatever you bid, and you
+know what is in them, so bidding your own pile or less is a free fish: bury one live cat, bid one,
+collect. The floor is your own pile plus one, which makes every challenge cost a guess about
+somebody else's shelf. The server computes it per viewer (`yourMinBid`) because it depends on how
+many boxes that player has down.
+
+**A bid of every box on the table goes straight to the reveal.** Nobody can raise past the whole
+table, so asking three people to tap pass only delays the part they are waiting for.
+
 ## The reveal stays on the table
 
 A successful challenge used to collect the table in the same tick it resolved, which meant nobody

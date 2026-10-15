@@ -57,6 +57,16 @@ const current = (room) => room.seats[room.turn] ?? null
 /** Total boxes still closed on every shelf, the ceiling on any bid. */
 const onTable = (room) => living(room).reduce((n, p) => n + p.stack.length, 0)
 
+/**
+ * The lowest bid this player may make.
+ *
+ * Your own shelf opens in full whatever you bid, so a bid that does not reach
+ * past it never touches anyone else: bury one live cat, bid one, collect a free
+ * fish. Requiring one more than your own pile makes every challenge cost a
+ * guess about somebody else's shelf, which is the entire game.
+ */
+const bidFloor = (room, p) => Math.max(room.bid + 1, p.stack.length + 1)
+
 /** Bidding opens only once every player still in the game has put a box down. */
 const biddingOpen = (room) => living(room).every((p) => p.stack.length > 0)
 
@@ -176,9 +186,11 @@ export function bid(room, id, amount) {
     bad("Everyone puts a box down before the bidding opens.")
   }
   const n = Number(amount)
+  const floor = bidFloor(room, p)
+  const ceiling = onTable(room)
   if (!Number.isInteger(n)) bad("Bid a whole number.")
-  if (n <= room.bid) bad(`Bid higher than ${room.bid}.`)
-  if (n > onTable(room)) bad(`Only ${onTable(room)} boxes are on the table.`)
+  if (n < floor) bad(`Bid at least ${floor}: your own shelf opens anyway.`)
+  if (n > ceiling) bad(`Only ${ceiling} boxes are on the table.`)
 
   room.bid = n
   room.bidderId = id
@@ -187,6 +199,12 @@ export function bid(room, id, amount) {
   if (room.phase === PHASE.PLACE) {
     room.phase = PHASE.BID
     for (const x of room.seats) x.passed = false
+  }
+  // Nobody can raise past every box on the table, so do not make the others
+  // tap pass to say what the table already says.
+  if (n === ceiling) {
+    note(room, "Nobody can raise that")
+    return beginReveal(room)
   }
   if (living(room).every((x) => x.passed || x.id === id)) return beginReveal(room)
   room.turn = nextSeat(room, room.turn, true)
@@ -286,9 +304,7 @@ function afterRoundEnd(room, starterId, loserId = null) {
   // round. Collecting it in the same tick meant nobody ever saw the cats they
   // had just bet on, which is the only moment in the game worth watching.
   const shown = room.seats.filter((p) => p.up.length).map((p) => ({ id: p.id, up: [...p.up] }))
-  room.lastReveal = shown.length
-    ? { by: room.bidderId, outcome: loserId ? "dead" : "fish", seats: shown }
-    : null
+  const reveal = shown.length ? { by: room.bidderId, outcome: loserId ? "dead" : "fish", seats: shown } : null
 
   for (const p of room.seats) {
     if (p.out) continue
@@ -299,14 +315,20 @@ function afterRoundEnd(room, starterId, loserId = null) {
   }
 
   const loser = loserId ? seat(room, loserId) : null
+  let lost = null
   if (loser && !loser.out) {
     const burnt = burnCard(loser)
-    if (burnt) note(room, `${loser.name} gives up ${label(burnt)}`)
+    if (burnt) {
+      lost = { id: loser.id, card: burnt }
+      note(room, `${loser.name} gives up ${label(burnt)}`)
+    }
   }
 
   for (const p of room.seats) {
     if (!p.out && owned(p) === 0) foldOut(room, p, "no boxes left")
   }
+
+  room.lastReveal = reveal && { ...reveal, lost }
 
   const left = living(room)
   if (left.length === 1 && room.seats.length >= MIN_SEATS) {
@@ -344,6 +366,10 @@ export function projectState(room, viewerId) {
     lastReveal: room.lastReveal,
     turnId: room.phase === PHASE.LOBBY || room.phase === PHASE.OVER ? null : (turnPlayer?.id ?? null),
     maxBid: onTable(room),
+    yourMinBid: (() => {
+      const you = seat(room, viewerId)
+      return you && !you.out ? bidFloor(room, you) : room.bid + 1
+    })(),
     biddingOpen: biddingOpen(room),
     pointsToWin: WINNING_POINTS,
     log: [...room.log],

@@ -16,9 +16,9 @@ import { house, matFace, tileBack, tileFace } from "./catArt"
 
 // A tile is a coaster, not a coin. The mat is sized around it: a closed pile
 // at the back left, a row of opened tiles across the front, all on the plate.
-const TILE_R = 0.66
-const TILE_H = 0.1
-const MAT = 3.4
+const TILE_R = 0.88
+const TILE_H = 0.14
+const MAT = 4.1
 
 const tileGeo = new THREE.CylinderGeometry(TILE_R, TILE_R, TILE_H, 48)
 const matGeo = new THREE.BoxGeometry(MAT, 0.06, MAT)
@@ -41,15 +41,15 @@ function seatPositions(count) {
   const out = []
   for (let i = 0; i < count; i++) {
     if (i === 0) {
-      out.push({ x: 0, z: 2.35 })
+      out.push({ x: 0, z: 2.75 })
       continue
     }
     const others = count - 1
     const t = others === 1 ? 0.5 : (i - 1) / (others - 1)
-    const spread = others <= 2 ? 4.2 : 3.9 * others
+    const spread = others <= 2 ? 5.0 : 4.6 * others
     out.push({
       x: (t - 0.5) * spread,
-      z: -1.75 + Math.abs(t - 0.5) * 1.4,
+      z: -2.05 + Math.abs(t - 0.5) * 1.5,
     })
   }
   return out
@@ -62,6 +62,8 @@ export default function Table3D({ state, onOpen, canOpen }) {
   latest.current = { state, onOpen, canOpen }
   /** How many tiles each player had face up last build, so only new ones flip. */
   const seen = useRef(new Map())
+  /** The last reveal already played out, so a rebuild does not replay it. */
+  const played = useRef(null)
 
   // Scene, lights and loop: built once, never torn down by a state change.
   useEffect(() => {
@@ -228,6 +230,7 @@ export default function Table3D({ state, onOpen, canOpen }) {
       })
     }
 
+    const areas = new Map()
     const seats = state.seats
     const mine = Math.max(0, seats.findIndex((p) => p.id === state.you))
     const order = seats.map((_, i) => seats[(mine + i) % seats.length])
@@ -240,6 +243,7 @@ export default function Table3D({ state, onOpen, canOpen }) {
       const area = new THREE.Group()
       area.position.set(spot.x, 0, spot.z)
       area.userData.ownerId = p.id
+      areas.set(p.id, area)
       group.add(area)
 
       const matTex = tex(`mat:${p.id}:${p.name}:${p.points}`, () =>
@@ -289,14 +293,31 @@ export default function Table3D({ state, onOpen, canOpen }) {
         tile.castShadow = true
         tile.receiveShadow = true
         if (flip) {
-          // The one authored moment: a tile turning over, once, on reveal.
+          /*
+           * The moment the whole game turns on, so it gets weight: the box
+           * lifts off the shelf, turns over in the air, drops back, and then
+           * settles. A dead cat keeps shaking for a beat after it lands, which
+           * is the cue nobody needs explained.
+           */
+          const restY = 0.08 + TILE_H / 2
           tile.rotation.z = Math.PI
           let t = 0
           tile.userData.update = (dt) => {
-            t = Math.min(1, t + dt * 2.6)
-            const e = 1 - Math.pow(1 - t, 3)
+            t = Math.min(1.6, t + dt * 1.9)
+            const e = 1 - Math.pow(1 - Math.min(1, t), 3)
             tile.rotation.z = Math.PI * (1 - e)
-            tile.position.y = 0.09 + Math.sin(e * Math.PI) * 0.5
+            tile.position.y = restY + Math.sin(Math.min(1, t) * Math.PI) * 0.85
+            if (t > 1) {
+              const after = t - 1
+              const decay = Math.max(0, 1 - after / 0.6)
+              if (dead) {
+                tile.position.x = tile.userData.restX + Math.sin(after * 48) * 0.05 * decay
+                tile.rotation.y = Math.sin(after * 40) * 0.09 * decay
+              } else {
+                const pop = 1 + Math.sin(after * 10) * 0.05 * decay
+                tile.scale.set(pop, 1, pop)
+              }
+            }
           }
         }
         return tile
@@ -333,8 +354,9 @@ export default function Table3D({ state, onOpen, canOpen }) {
           })
         }
         tile.castShadow = true
-        tile.position.set(-0.95, 0.08 + TILE_H / 2 + k * (TILE_H + 0.015), -0.85)
-        tile.rotation.y = k * 0.11
+        // A real pile: each box sits squarely on the one below, turned a little.
+        tile.position.set(-1.05, 0.08 + TILE_H / 2 + k * (TILE_H + 0.012), -0.95)
+        tile.rotation.y = k * 0.13
         area.add(tile)
       })
 
@@ -346,12 +368,81 @@ export default function Table3D({ state, onOpen, canOpen }) {
           new THREE.MeshBasicMaterial({ color: 0xfaf2dd, transparent: true, opacity: 0.16, side: THREE.DoubleSide }),
         )
         ghost.rotation.x = -Math.PI / 2
-        ghost.position.set(-0.95, 0.086, -0.85)
+        ghost.position.set(-1.05, 0.086, -0.95)
         area.add(ghost)
       }
     })
 
     ctx.measure()
+
+    /*
+     * The two things worth watching, played once each. A rebuild happens on
+     * every state change, so both are keyed to the reveal they belong to.
+     */
+    const revealKey = state.lastReveal ? JSON.stringify(state.lastReveal) : null
+    const fresh = revealKey && revealKey !== played.current
+    played.current = revealKey
+    if (!fresh) return
+
+    const lost = state.lastReveal.lost
+    if (lost && areas.has(lost.id)) {
+      // The box leaves the table rather than blinking out of existence.
+      const seat = seats.findIndex((p) => p.id === lost.id)
+      const dead = lost.card === "dead"
+      const mats = [
+        new THREE.MeshStandardMaterial({ color: 0x241c12, roughness: 0.9, transparent: true }),
+        new THREE.MeshStandardMaterial({ map: tex(`face:${seat}:${dead}`, () => tileFace(seat, { dead })), roughness: 0.55, transparent: true }),
+        new THREE.MeshStandardMaterial({ map: tex(`back:${seat}`, () => tileBack(seat)), roughness: 0.55, transparent: true }),
+      ]
+      const gone = new THREE.Mesh(tileGeo, mats)
+      gone.position.set(0.2, 0.08 + TILE_H / 2, -0.95)
+      areas.get(lost.id).add(gone)
+      let t = 0
+      gone.userData.update = (dt) => {
+        t += dt
+        const e = Math.min(1, t / 1.5)
+        gone.position.y = 0.15 + e * 2.6
+        gone.position.z = -0.95 - e * 1.4
+        gone.rotation.x = e * 3.4
+        gone.rotation.z = e * 1.6
+        const fade = 1 - Math.pow(e, 2)
+        for (const m of mats) m.opacity = fade
+        if (e >= 1) gone.visible = false
+      }
+      const owner = areas.get(lost.id)
+      const before = owner.userData.update
+      owner.userData.update = (dt) => {
+        before?.(dt)
+        gone.userData.update(dt)
+      }
+    }
+
+    if (state.lastReveal.outcome === "fish" && areas.has(state.lastReveal.by)) {
+      // A made bid: one ring off the shelf that pulled it off.
+      const ring = new THREE.Mesh(
+        new THREE.RingGeometry(MAT * 0.3, MAT * 0.34, 72),
+        new THREE.MeshBasicMaterial({ color: 0xfaf2dd, transparent: true, side: THREE.DoubleSide }),
+      )
+      ring.rotation.x = -Math.PI / 2
+      ring.position.y = 0.1
+      ring.userData.noFit = true
+      areas.get(state.lastReveal.by).add(ring)
+      let t = 0
+      const pulse = (dt) => {
+        t += dt
+        const e = Math.min(1, t / 1.1)
+        const scale = 0.6 + e * 1.5
+        ring.scale.set(scale, scale, scale)
+        ring.material.opacity = 0.85 * (1 - e)
+        if (e >= 1) ring.visible = false
+      }
+      const area = areas.get(state.lastReveal.by)
+      const prev = area.userData.update
+      area.userData.update = (dt) => {
+        prev?.(dt)
+        pulse(dt)
+      }
+    }
   }, [state, canOpen])
 
   return <div className="table3d" ref={host} aria-hidden="true" />
