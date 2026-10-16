@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react"
 import * as THREE from "three"
 import { house, matFace, tileBack, tileFace } from "./catArt"
+import { openedRow } from "./layout"
 
 /*
  * The table, as actual objects.
@@ -71,7 +72,18 @@ export default function Table3D({ state, onOpen, canOpen, onPlace, canPlace, you
   // Scene, lights and loop: built once, never torn down by a state change.
   useEffect(() => {
     const el = host.current
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
+    /*
+     * No WebGL means an old device, a blocklisted GPU or acceleration switched
+     * off, not a reason to show nobody a blank page. Bail out and let the flat
+     * controls, which are otherwise hidden behind the table, come back.
+     */
+    let renderer
+    try {
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
+    } catch {
+      document.documentElement.dataset.flat = "true"
+      return
+    }
     renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
     renderer.shadowMap.enabled = true
     renderer.shadowMap.type = THREE.PCFSoftShadowMap
@@ -190,7 +202,7 @@ export default function Table3D({ state, onOpen, canOpen, onPlace, canPlace, you
     let raf
     const tick = () => {
       const dt = Math.min(clock.getDelta(), 0.05)
-      for (const m of group.children) m.userData.update?.(dt)
+      group.traverse((o) => o.userData.update?.(dt))
       // Anything clickable rises under the pointer. Nothing else in the scene
       // moves on hover, so the lift reads as "this one".
       for (const m of liftable.current) {
@@ -310,7 +322,6 @@ export default function Table3D({ state, onOpen, canOpen, onPlace, canPlace, you
           t += dt
           halo.material.opacity = 0.55 + Math.sin(t * 3.4) * 0.3
         }
-        area.userData.update = (dt) => halo.userData.update(dt)
       }
 
       const back = tex(`back:${seat}`, () => tileBack(seat))
@@ -380,14 +391,12 @@ export default function Table3D({ state, onOpen, canOpen, onPlace, canPlace, you
          * spreads as wide as the mat allows and fans past that: each box then
          * rests on the one before instead of intersecting it.
          */
-        const room = MAT - TILE_R * 2 - 0.4
-        const gap = faceUp.length > 1 ? Math.min(TILE_R * 2.15, room / (faceUp.length - 1)) : 0
-        const stacked = gap > 0 && gap < TILE_R * 2
+        const { gap, fanned: stacked } = openedRow({ count: faceUp.length, mat: MAT, radius: TILE_R })
         const spread = (faceUp.length - 1) / 2
         tile.position.set(
           (k - spread) * gap,
           0.08 + TILE_H / 2 + (stacked ? k * TILE_H * 0.5 : 0),
-          0.45,
+          0.78,
         )
         if (stacked) tile.rotation.y = k * 0.14
         // The shake reads this, and an unset rest position writes NaN into the
@@ -408,7 +417,7 @@ export default function Table3D({ state, onOpen, canOpen, onPlace, canPlace, you
         // knows what is under there, and remembering it is the game.
         tile.castShadow = true
         // A real pile: each box sits squarely on the one below, turned a little.
-        tile.position.set(-1.05, 0.08 + TILE_H / 2 + k * (TILE_H + 0.012), -0.95)
+        tile.position.set(0, 0.08 + TILE_H / 2 + k * (TILE_H + 0.012), -0.78)
         tile.rotation.y = k * 0.13
         area.add(tile)
       })
@@ -421,7 +430,7 @@ export default function Table3D({ state, onOpen, canOpen, onPlace, canPlace, you
           new THREE.MeshBasicMaterial({ color: 0xfaf2dd, transparent: true, opacity: 0.16, side: THREE.DoubleSide }),
         )
         ghost.rotation.x = -Math.PI / 2
-        ghost.position.set(-1.05, 0.086, -0.95)
+        ghost.position.set(0, 0.086, -0.78)
         area.add(ghost)
       }
     })
@@ -499,12 +508,6 @@ export default function Table3D({ state, onOpen, canOpen, onPlace, canPlace, you
         for (const m of mats) m.opacity = fade
         if (e >= 1) gone.visible = false
       }
-      const owner = areas.get(lost.id)
-      const before = owner.userData.update
-      owner.userData.update = (dt) => {
-        before?.(dt)
-        gone.userData.update(dt)
-      }
     }
 
     if (state.lastReveal.outcome === "fish" && areas.has(state.lastReveal.by)) {
@@ -515,23 +518,17 @@ export default function Table3D({ state, onOpen, canOpen, onPlace, canPlace, you
       )
       ring.rotation.x = -Math.PI / 2
       // Under the boxes: a ring drawn over them reads as a rendering fault.
-      ring.position.set(0, 0.075, 0.45)
+      ring.position.set(0, 0.075, 0.78)
       ring.userData.noFit = true
       areas.get(state.lastReveal.by).add(ring)
       let t = 0
-      const pulse = (dt) => {
+      ring.userData.update = (dt) => {
         t += dt
         const e = Math.min(1, t / 1.1)
         const scale = 0.5 + e * 1.3
         ring.scale.set(scale, scale, scale)
         ring.material.opacity = 0.5 * (1 - e)
         if (e >= 1) ring.visible = false
-      }
-      const area = areas.get(state.lastReveal.by)
-      const prev = area.userData.update
-      area.userData.update = (dt) => {
-        prev?.(dt)
-        pulse(dt)
       }
     }
   }, [state, canOpen])

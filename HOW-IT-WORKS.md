@@ -81,6 +81,12 @@ at the origin, and the camera dived into the table.
 The one piece of motion is a tile turning over. Only newly opened tiles animate, tracked by how many
 each player had face up on the previous render, so a state update does not replay every flip.
 
+Every animated object is ticked with `group.traverse`, not by walking `group.children`. The tiles
+live inside each seat's group, so a children-only loop never reached them: the flip updater never
+ran, and an opened box sat at `rotation.z = PI` showing its own back for the rest of the game. The
+two tweens that looked fine were the two that had been hand-chained onto the seat group, which is
+what hid the bug.
+
 ## Two house rules the printed game does not have
 
 **A bid has to reach past your own shelf.** Your own boxes open in full whatever you bid, and you
@@ -118,6 +124,17 @@ component rules it hides are single-class selectors too.
 Boxes open one at a time (each flip waits `index * 0.55s`), because a shelf of four opening at once
 is a blur. The opened row spreads as wide as the mat allows and fans past that, so boxes never
 intersect: four of them cannot fit side by side on one mat at this size.
+
+## No WebGL, still a game
+
+`new THREE.WebGLRenderer()` throws on a device without WebGL (old hardware, a
+blocklisted GPU, acceleration switched off, some in-app browsers). Thrown from an
+effect, that took the whole React tree down and served a blank page: no table, no
+homepage, no join form. Both scenes now catch it and set `data-flat` on the
+document, which brings back the plain controls that normally hide behind the
+table. The markup is the same either way, so there is no second interface to keep
+working: the hidden-but-focusable buttons that exist for keyboard users are
+exactly what a GPU-less device gets.
 
 ## The reveal stays on the table
 

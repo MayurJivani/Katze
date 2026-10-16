@@ -904,6 +904,16 @@ button.reach {
   box-shadow: none;
 }
 
+/*
+ * No WebGL, no table, so the controls that normally live on it come back as
+ * ordinary buttons. Same markup either way: nothing is rebuilt for this case.
+ */
+[data-flat="true"] .table3d,
+[data-flat="true"] .home-scene {
+  display: none;
+}
+
+[data-flat="true"] button.reach,
 button.reach:focus-visible {
   position: static;
   width: auto;

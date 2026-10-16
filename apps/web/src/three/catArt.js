@@ -340,14 +340,14 @@ export function matFace(seat, { name = "", points = 0, pointsToWin = 2, size = 5
   ctx.textAlign = "center"
   ctx.textBaseline = "middle"
   // Near edge of the mat once it is on the table: the tiles sit behind it.
-  ctx.fillText(name.slice(0, 12).toUpperCase(), c, size * 0.86)
+  ctx.fillText(name.slice(0, 12).toUpperCase(), c, size * 0.93)
 
   // Fish earned, along the far edge where nothing is ever stacked.
-  const gap = size * 0.1
-  const startX = c - ((pointsToWin - 1) * gap) / 2
+  const gap = size * 0.085
+  const startX = size * 0.82 - (pointsToWin - 1) * gap
   for (let i = 0; i < pointsToWin; i++) {
     const x = startX + i * gap
-    disc(ctx, x, size * 0.17, size * 0.038, i < points ? h.trim : "rgba(253,246,230,0.22)")
+    disc(ctx, x, size * 0.145, size * 0.038, i < points ? h.trim : "rgba(253,246,230,0.22)")
   }
   return el
 }

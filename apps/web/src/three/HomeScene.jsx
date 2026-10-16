@@ -24,7 +24,18 @@ export default function HomeScene({ onReveal }) {
   useEffect(() => {
     const el = host.current
     const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
+    /*
+     * No WebGL means an old device, a blocklisted GPU or acceleration switched
+     * off, not a reason to show nobody a blank page. Bail out and let the flat
+     * controls, which are otherwise hidden behind the table, come back.
+     */
+    let renderer
+    try {
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
+    } catch {
+      document.documentElement.dataset.flat = "true"
+      return
+    }
     renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
     el.appendChild(renderer.domElement)
 
