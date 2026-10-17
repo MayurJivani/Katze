@@ -62,6 +62,8 @@ export default function HomeScene({ onReveal }) {
     const raycaster = new THREE.Raycaster()
     const pointer = new THREE.Vector2()
     let hovered = null
+    let lives = 0
+    let cheer = 0
     const boxes = []
 
     /** Three live cats and one dead one, in an order nobody is told. */
@@ -73,6 +75,8 @@ export default function HomeScene({ onReveal }) {
         const j = Math.floor(Math.random() * (i + 1))
         ;[cards[i], cards[j]] = [cards[j], cards[i]]
       }
+      lives = 0
+      cheer = 0
       cards.forEach((card, i) => {
         const seat = SEATS[i]
         const dead = card === "dead"
@@ -109,9 +113,24 @@ export default function HomeScene({ onReveal }) {
       if (!b || b.userData.open) return
       b.userData.open = true
       b.userData.spin = 0.0001
-      report.current?.(b.userData.card)
-      // Find the dead one and the whole thing resets, which is the game.
-      if (b.userData.card === "dead") setTimeout(() => deal(), 1600)
+
+      if (b.userData.card === "dead") {
+        report.current?.("dead")
+        // Find the dead one and the whole thing resets, which is the game.
+        setTimeout(() => deal(), 1600)
+        return
+      }
+
+      lives += 1
+      // All three live cats and the dead one never touched: the boxes take a
+      // bow, which is the only trophy a homepage needs.
+      if (lives === 3) {
+        report.current?.("win")
+        cheer = 0.0001
+        setTimeout(() => deal(), 2400)
+      } else {
+        report.current?.("cat")
+      }
     }
     renderer.domElement.addEventListener("pointermove", onMove)
     renderer.domElement.addEventListener("click", onClick)
@@ -132,6 +151,7 @@ export default function HomeScene({ onReveal }) {
     const tick = () => {
       const dt = Math.min(clock.getDelta(), 0.05)
       const t = clock.elapsedTime
+      if (cheer) cheer = Math.min(1, cheer + dt / 1.1)
       for (const b of boxes) {
         const d = b.userData
         if (d.spin) {
@@ -144,6 +164,12 @@ export default function HomeScene({ onReveal }) {
           const lift = hovered === b ? 0.42 : 0
           const idle = Math.sin(t * 1.6 + d.drop * 10) * 0.05
           b.position.y += (d.restY + lift + idle - b.position.y) * Math.min(1, dt * 10)
+        }
+        if (cheer && !reduced) {
+          // A wave along the row, the closed dead one included: it lost.
+          const hop = Math.max(0, Math.sin((cheer - d.drop * 0.5) * Math.PI))
+          b.position.y = d.restY + hop * 1.1
+          b.rotation.y = hop * Math.PI * 2
         }
       }
       renderer.render(scene, camera)

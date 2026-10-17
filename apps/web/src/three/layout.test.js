@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { openedRow } from "./layout.js"
+import { FLIP_END, flipProgress, openedRow } from "./layout.js"
 
 const MAT = 4.1
 const R = 0.88
@@ -23,4 +23,22 @@ test("boxes that cannot sit side by side are fanned instead of intersecting", ()
   for (const count of [3, 4]) {
     assert.equal(openedRow({ count, mat: MAT, radius: R }).fanned, true)
   }
+})
+
+test("a box in the air resumes its flip instead of restarting or snapping", () => {
+  const t0 = 1000
+
+  // Never seen turning: it was opened before we were looking, so it is just up.
+  assert.equal(flipProgress(undefined, t0), FLIP_END)
+
+  // Opened this instant: the very start of the turn.
+  assert.equal(flipProgress(t0, t0), 0)
+
+  // Half a second in, a rebuild has to hand back a middle of the animation,
+  // not zero (restart) and not the end (snap).
+  const mid = flipProgress(t0, t0 + 500)
+  assert.ok(mid > 0 && mid < FLIP_END, `expected mid-flip, got ${mid}`)
+
+  // Long finished, so it stays put.
+  assert.ok(flipProgress(t0, t0 + 5000) >= FLIP_END)
 })

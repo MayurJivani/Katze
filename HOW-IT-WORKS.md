@@ -81,6 +81,14 @@ at the origin, and the camera dived into the table.
 The one piece of motion is a tile turning over. Only newly opened tiles animate, tracked by how many
 each player had face up on the previous render, so a state update does not replay every flip.
 
+An opened box owns its own clock. The scene is thrown away and rebuilt from scratch on every state
+push, so a box turning over in the air used to be destroyed mid-flip and replaced by one that either
+restarted or snapped flat: with two players acting, that is most of the reveals. Each opened box now
+records when it started turning (`flips`, keyed by owner and position) and a rebuilt box picks the
+animation up exactly where it was. Two things made that worse and are also fixed: the table's scene
+was keyed on a state object and a callback that were both freshly created on every render, so it
+rebuilt even when nothing about the game had changed.
+
 Every animated object is ticked with `group.traverse`, not by walking `group.children`. The tiles
 live inside each seat's group, so a children-only loop never reached them: the flip updater never
 ran, and an opened box sat at `rotation.z = PI` showing its own back for the rest of the game. The

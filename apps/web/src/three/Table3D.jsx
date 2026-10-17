@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react"
 import * as THREE from "three"
 import { house, matFace, tileBack, tileFace } from "./catArt"
-import { openedRow } from "./layout"
+import { FLIP_END, FLIP_RATE, flipProgress, openedRow } from "./layout"
 
 /*
  * The table, as actual objects.
@@ -61,8 +61,8 @@ export default function Table3D({ state, onOpen, canOpen, onPlace, canPlace, you
   const api = useRef(null)
   const latest = useRef({ state, onOpen, canOpen, onPlace, canPlace })
   latest.current = { state, onOpen, canOpen, onPlace, canPlace }
-  /** How many tiles each player had face up last build, so only new ones flip. */
-  const seen = useRef(new Map())
+  /** When each opened box started turning over, so a rebuild resumes it. */
+  const flips = useRef(new Map())
   /** The last reveal already played out, so a rebuild does not replay it. */
   const played = useRef(null)
   /** Meshes that answer the pointer, and which one it is on. */
@@ -274,6 +274,8 @@ export default function Table3D({ state, onOpen, canOpen, onPlace, canPlace, you
     }
 
     const areas = new Map()
+    // Nothing face up and no result held: a new round, so the flip clocks go.
+    if (!state.seats.some((p) => p.up.length) && !state.lastReveal) flips.current.clear()
     liftable.current = []
     hovered.current = null
     const seats = state.seats
@@ -327,7 +329,7 @@ export default function Table3D({ state, onOpen, canOpen, onPlace, canPlace, you
       const back = tex(`back:${seat}`, () => tileBack(seat))
       const sideMat = new THREE.MeshStandardMaterial({ color: 0x241c12, roughness: 0.9 })
 
-      const makeTile = (topCanvasKey, topMake, flip, order = 0) => {
+      const makeTile = (topCanvasKey, topMake, progress) => {
         const top = tex(topCanvasKey, topMake)
         const tile = new THREE.Mesh(tileGeo, [
           sideMat,
@@ -336,25 +338,21 @@ export default function Table3D({ state, onOpen, canOpen, onPlace, canPlace, you
         ])
         tile.castShadow = true
         tile.receiveShadow = true
-        if (flip) {
+        if (progress < FLIP_END) {
           /*
            * The moment the whole game turns on, so it gets weight: the box
            * lifts off the shelf, turns over in the air, drops back, and then
            * settles. A dead cat keeps shaking for a beat after it lands, which
            * is the cue nobody needs explained.
+           *
+           * It starts from however far along the flip already is, because the
+           * scene is rebuilt from scratch on every state push and a box must
+           * not restart or snap just because somebody else did something.
            */
           const restY = 0.08 + TILE_H / 2
-          tile.rotation.z = Math.PI
-          // One box at a time: a shelf opening all at once is a blur, and
-          // watching them come up one by one is the whole moment.
-          let wait = order * 0.55
-          let t = 0
+          let t = progress
           tile.userData.update = (dt) => {
-            if (wait > 0) {
-              wait -= dt
-              return
-            }
-            t = Math.min(1.6, t + dt * 1.9)
+            t = Math.min(FLIP_END, t + dt * FLIP_RATE)
             const e = 1 - Math.pow(1 - Math.min(1, t), 3)
             tile.rotation.z = Math.PI * (1 - e)
             tile.position.y = restY + Math.sin(Math.min(1, t) * Math.PI) * 0.85
@@ -371,6 +369,7 @@ export default function Table3D({ state, onOpen, canOpen, onPlace, canPlace, you
             }
           }
         }
+        if (tile.userData.update) tile.userData.update(0)
         return tile
       }
 
@@ -382,9 +381,10 @@ export default function Table3D({ state, onOpen, canOpen, onPlace, canPlace, you
       // Face up, laid out left to right in the order they were opened.
       faceUp.forEach((card, k) => {
         const dead = card === "dead"
-        const alreadyUp = seen.current.get(p.id) ?? 0
-        const isNew = p.up.length > 0 && k >= alreadyUp
-        const tile = makeTile(`face:${seat}:${dead}`, () => tileFace(seat, { dead }), isNew, k - alreadyUp)
+        const key = `${p.id}:${k}`
+        if (p.up.length && !flips.current.has(key)) flips.current.set(key, performance.now())
+        const progress = flipProgress(flips.current.get(key), performance.now())
+        const tile = makeTile(`face:${seat}:${dead}`, () => tileFace(seat, { dead }), progress)
 
         /*
          * Four boxes this size cannot sit side by side on one mat, so the row
@@ -421,8 +421,6 @@ export default function Table3D({ state, onOpen, canOpen, onPlace, canPlace, you
         tile.rotation.y = k * 0.13
         area.add(tile)
       })
-
-      seen.current.set(p.id, p.up.length)
 
       if (!faceUp.length && !closed.length) {
         const ghost = new THREE.Mesh(
@@ -531,7 +529,7 @@ export default function Table3D({ state, onOpen, canOpen, onPlace, canPlace, you
         if (e >= 1) ring.visible = false
       }
     }
-  }, [state, canOpen])
+  }, [state])
 
   return (
     <div

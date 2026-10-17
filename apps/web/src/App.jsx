@@ -110,11 +110,13 @@ function Home({ onJoin, waiting, onLearn }) {
         <div className="hero-copy">
           <h2>Three live cats. One dead one.</h2>
           <p className="lede" aria-live="polite">
-            {found === "cat"
-              ? "Alive. The next one might not be."
-              : found === "dead"
-                ? "That one was dead. Everything shuffles, and nobody knows again."
-                : "Four closed boxes. Open one and find out, then do it with friends and lie about it."}
+            {found === "win"
+              ? "Three for three, and you never touched the dead one. Do that against people who are lying to you."
+              : found === "cat"
+                ? "Alive. The next one might not be."
+                : found === "dead"
+                  ? "That one was dead. Everything shuffles, and nobody knows again."
+                  : "Four closed boxes. Open one and find out, then do it with friends and lie about it."}
           </p>
         </div>
         <HomeScene onReveal={setFound} />
@@ -219,8 +221,13 @@ function Table({ state, send }) {
     const t = setTimeout(() => setHolding(false), RESULT_HOLD_MS)
     return () => clearTimeout(t)
   }, [state.lastReveal])
-  // Everything downstream sees a table that has already been cleared.
-  const shown = holding ? state : { ...state, lastReveal: null }
+  // Everything downstream sees a table that has already been cleared. Memoised
+  // because the table rebuilds its whole scene whenever this object changes,
+  // and a fresh one per render would cut every flip off mid-air.
+  const shown = useMemo(
+    () => (holding ? state : { ...state, lastReveal: null }),
+    [state, holding],
+  )
 
   const me = state.seats.find((p) => p.id === state.you)
   const yourTurn = state.turnId === state.you
