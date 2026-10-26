@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react"
 import * as THREE from "three"
 import { house, matFace, tileBack, tileFace } from "./catArt"
-import { FLIP_END, FLIP_RATE, flipProgress, openedRow } from "./layout"
+import { FLIP_END, FLIP_RATE, faceUpOn, flipProgress, openedRow } from "./layout"
 
 /*
  * The table, as actual objects.
@@ -21,8 +21,13 @@ const TILE_R = 0.88
 const TILE_H = 0.14
 const MAT = 4.1
 
-const tileGeo = new THREE.CylinderGeometry(TILE_R, TILE_R, TILE_H, 48)
+// A cylinder's cap maps the top of its texture to +x, which lays every cat on
+// its side. A quarter turn puts the top of the art at the far edge of the tile.
+const tileGeo = new THREE.CylinderGeometry(TILE_R, TILE_R, TILE_H, 48).rotateY(Math.PI / 2)
 const matGeo = new THREE.BoxGeometry(MAT, 0.06, MAT)
+
+// Reduced motion: boxes land face up without the toss, and nothing pulses.
+const still = () => matchMedia("(prefers-reduced-motion: reduce)").matches
 
 function texture(canvas) {
   const t = new THREE.CanvasTexture(canvas)
@@ -200,18 +205,20 @@ export default function Table3D({ state, onOpen, canOpen, onPlace, canPlace, you
 
     const clock = new THREE.Clock()
     let raf
+    const calm = still()
     const tick = () => {
+      // Schedule first: one updater that throws must not freeze the table.
+      raf = requestAnimationFrame(tick)
       const dt = Math.min(clock.getDelta(), 0.05)
       group.traverse((o) => o.userData.update?.(dt))
       // Anything clickable rises under the pointer. Nothing else in the scene
       // moves on hover, so the lift reads as "this one".
       for (const m of liftable.current) {
-        const beat = m.userData.handCard ? Math.sin(clock.elapsedTime * 2.4) * 0.06 + 0.06 : 0
+        const beat = m.userData.handCard && !calm ? Math.sin(clock.elapsedTime * 2.4) * 0.06 + 0.06 : 0
         const want = m.userData.restY + beat + (hovered.current === m ? 0.34 : 0)
         m.position.y += (want - m.position.y) * Math.min(1, dt * 14)
       }
       renderer.render(scene, camera)
-      raf = requestAnimationFrame(tick)
     }
     tick()
 
@@ -274,6 +281,14 @@ export default function Table3D({ state, onOpen, canOpen, onPlace, canPlace, you
     }
 
     const areas = new Map()
+    const calm = still()
+    /*
+     * The two things worth watching, played once each. A rebuild happens on
+     * every state change, so both are keyed to the reveal they belong to.
+     */
+    const revealKey = state.lastReveal ? JSON.stringify(state.lastReveal) : null
+    const fresh = revealKey && revealKey !== played.current
+    played.current = revealKey
     // Nothing face up and no result held: a new round, so the flip clocks go.
     if (!state.seats.some((p) => p.up.length) && !state.lastReveal) flips.current.clear()
     liftable.current = []
@@ -322,14 +337,14 @@ export default function Table3D({ state, onOpen, canOpen, onPlace, canPlace, you
         let t = 0
         halo.userData.update = (dt) => {
           t += dt
-          halo.material.opacity = 0.55 + Math.sin(t * 3.4) * 0.3
+          if (!calm) halo.material.opacity = 0.55 + Math.sin(t * 3.4) * 0.3
         }
       }
 
       const back = tex(`back:${seat}`, () => tileBack(seat))
       const sideMat = new THREE.MeshStandardMaterial({ color: 0x241c12, roughness: 0.9 })
 
-      const makeTile = (topCanvasKey, topMake, progress) => {
+      const makeTile = (topCanvasKey, topMake, progress, dead) => {
         const top = tex(topCanvasKey, topMake)
         const tile = new THREE.Mesh(tileGeo, [
           sideMat,
@@ -354,7 +369,9 @@ export default function Table3D({ state, onOpen, canOpen, onPlace, canPlace, you
           tile.userData.update = (dt) => {
             t = Math.min(FLIP_END, t + dt * FLIP_RATE)
             const e = 1 - Math.pow(1 - Math.min(1, t), 3)
-            tile.rotation.z = Math.PI * (1 - e)
+            // Over the near edge, not sideways: turning about z lands the face
+            // upside down relative to how the back was lying.
+            tile.rotation.x = Math.PI * (1 - e)
             tile.position.y = restY + Math.sin(Math.min(1, t) * Math.PI) * 0.85
             if (t > 1) {
               const after = t - 1
@@ -375,16 +392,17 @@ export default function Table3D({ state, onOpen, canOpen, onPlace, canPlace, you
 
       // Between rounds the table is empty, so the last reveal stays on it: the
       // cats everyone just bet on, still face up, until somebody plays again.
-      const held = state.lastReveal?.seats.find((x) => x.id === p.id)
-      const faceUp = p.up.length ? p.up : (held?.up ?? [])
+      const faceUp = faceUpOn(state, p.id)
 
       // Face up, laid out left to right in the order they were opened.
       faceUp.forEach((card, k) => {
         const dead = card === "dead"
         const key = `${p.id}:${k}`
-        if (p.up.length && !flips.current.has(key)) flips.current.set(key, performance.now())
-        const progress = flipProgress(flips.current.get(key), performance.now())
-        const tile = makeTile(`face:${seat}:${dead}`, () => tileFace(seat, { dead }), progress)
+        // The box that settles the round arrives already collected into the
+        // result, so it starts its flip from there or it would never turn.
+        if ((p.up.length || fresh) && !flips.current.has(key)) flips.current.set(key, performance.now())
+        const progress = calm ? FLIP_END : flipProgress(flips.current.get(key), performance.now())
+        const tile = makeTile(`face:${seat}:${dead}`, () => tileFace(seat, { dead }), progress, dead)
 
         /*
          * Four boxes this size cannot sit side by side on one mat, so the row
@@ -471,15 +489,7 @@ export default function Table3D({ state, onOpen, canOpen, onPlace, canPlace, you
     }
 
     ctx.measure()
-
-    /*
-     * The two things worth watching, played once each. A rebuild happens on
-     * every state change, so both are keyed to the reveal they belong to.
-     */
-    const revealKey = state.lastReveal ? JSON.stringify(state.lastReveal) : null
-    const fresh = revealKey && revealKey !== played.current
-    played.current = revealKey
-    if (!fresh) return
+    if (!fresh || calm) return
 
     const lost = state.lastReveal.lost
     if (lost && areas.has(lost.id)) {

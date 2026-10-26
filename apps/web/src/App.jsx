@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
+import { AnimatePresence, motion, useReducedMotion } from "motion/react"
 import { useRoom } from "./lib/useRoom"
 import { DeadCat, Fish, LiveCat } from "./Icons"
 import Table3D from "./three/Table3D"
@@ -215,12 +216,15 @@ const RESULT_HOLD_MS = 6500
 
 function Table({ state, send }) {
   const [holding, setHolding] = useState(true)
+  // Keyed by content: every state push parses a fresh object, and restarting
+  // the hold on each one left the last round's boxes on the table for good.
+  const result = state.lastReveal && JSON.stringify(state.lastReveal)
   useEffect(() => {
-    if (!state.lastReveal) return
+    if (!result) return
     setHolding(true)
     const t = setTimeout(() => setHolding(false), RESULT_HOLD_MS)
     return () => clearTimeout(t)
-  }, [state.lastReveal])
+  }, [result])
   // Everything downstream sees a table that has already been cleared. Memoised
   // because the table rebuilds its whole scene whenever this object changes,
   // and a fresh one per render would cut every flip off mid-air.
@@ -246,7 +250,7 @@ function Table({ state, send }) {
 
   return (
     <>
-      <Banner state={shown} yourTurn={yourTurn} opening={opening} />
+      <Banner state={shown} opening={opening} />
       <Table3D
         state={shown}
         yourTurn={yourTurn}
@@ -279,43 +283,137 @@ function Table({ state, send }) {
   )
 }
 
-function Banner({ state, yourTurn, opening }) {
-  const turn = state.seats.find((p) => p.id === state.turnId)
-  const winner = state.seats.find((p) => p.id === state.winnerId)
-  const bidder = state.seats.find((p) => p.id === state.bidderId)
-
-  const opened = state.seats.flatMap((p) => p.up)
-  const hitDead = opened.includes("dead")
+/**
+ * What the table is doing, in one line, and the one thing that explains it:
+ * why it happened or what comes next. Everyone reads the same story; only the
+ * turn line changes to "you".
+ */
+function narrate(state, opening) {
+  const name = (id) => (id === state.you ? "You" : (state.seats.find((p) => p.id === id)?.name ?? "Someone"))
+  const me = state.seats.find((p) => p.id === state.you)
+  const turn = state.turnId
+  const yours = turn === state.you
+  const bidder = name(state.bidderId)
+  const opened = state.seats.flatMap((p) => p.up).length
   const last = state.lastReveal
 
-  let line
-  let tone = state.phase
-  if (state.phase === "over") line = winner ? `${winner.name} wins the table` : "Game over"
-  else if (state.phase === "reveal" && hitDead) line = "The dead cat"
-  else if (opening && state.seats.find((p) => p.id === state.you)?.stackCount > 0)
-    line = `${opened.length} of ${state.bid} alive. Open your own boxes first`
-  else if (opening) line = `${opened.length} of ${state.bid} alive. Pick a neighbour's box`
-  else if (state.phase === "reveal") line = `${turn?.name} is opening boxes`
-  else if (last) {
-    // Between rounds the last result is the most useful thing on screen.
-    const by = state.seats.find((p) => p.id === last.by)
-    tone = last.outcome === "dead" ? "reveal" : "won"
-    line =
-      last.outcome === "dead"
-        ? `${by?.name} found the dead cat. One cat gone for good`
-        : `All alive. ${by?.name} took a fish`
-  } else if (yourTurn && state.phase === "bid") line = `Beat ${state.bid} or pass`
-  else if (yourTurn) line = "Put a box down, or open the bidding"
-  else line = `${turn?.name ?? "Someone"} is ${state.phase === "bid" ? "bidding" : "choosing a box"}`
+  if (state.phase === "over") {
+    const w = state.seats.find((p) => p.id === state.winnerId)
+    if (!w) return { tone: "over", line: "Game over", detail: "Nobody is left holding cats." }
+    return {
+      tone: "over",
+      line: `${name(w.id)} ${w.id === state.you ? "win" : "wins"} the table`,
+      detail:
+        w.points >= state.pointsToWin
+          ? `${state.pointsToWin} fish, and the game.`
+          : "Last one still holding cats.",
+    }
+  }
 
+  if (last) {
+    const by = name(last.by)
+    const next = `${name(turn)} ${yours ? "lead" : "leads"} the next round.`
+    if (last.outcome === "fish") {
+      const pts = state.seats.find((p) => p.id === last.by)?.points ?? 0
+      return {
+        tone: "won",
+        line: `All alive. ${by} ${last.by === state.you ? "take" : "takes"} a fish`,
+        detail: `${pts} of ${state.pointsToWin} fish. ${next}`,
+        clock: true,
+      }
+    }
+    const owner = last.seats.find((x) => x.up.includes("dead"))?.id
+    const own = owner === last.by ? " own" : ""
+    const whose = owner === state.you ? `your${own}` : own ? "their own" : `${name(owner)}'s`
+    const loser = state.seats.find((p) => p.id === last.lost?.id)
+    const cost = !last.lost
+      ? ""
+      : last.lost.id === state.you
+        ? `You lose ${last.lost.card === "dead" ? "your dead cat" : "a live cat"} for good. `
+        : `${loser?.name} loses a box for good. `
+    const out = loser?.out ? `${name(loser.id)} ${loser.id === state.you ? "are" : "is"} out of cats. ` : ""
+    return {
+      tone: "dead",
+      line: `${by} found the dead cat`,
+      detail: `It was in ${whose} box. ${cost}${out}${next}`,
+      clock: true,
+    }
+  }
+
+  if (state.phase === "reveal") {
+    const left = state.bid - opened
+    if (opening) {
+      return {
+        tone: "reveal",
+        line: `${opened} of ${state.bid} alive`,
+        detail:
+          me?.stackCount > 0
+            ? "Open your own boxes first, top of the pile down."
+            : `${left} more. Pick a box on someone else's shelf.`,
+      }
+    }
+    return {
+      tone: "reveal",
+      line: `${bidder} ${state.bidderId === state.you ? "are" : "is"} opening boxes`,
+      detail: `${opened} of ${state.bid} alive so far. One dead cat and the bid is lost.`,
+    }
+  }
+
+  if (state.phase === "bid") {
+    return yours
+      ? { tone: "turn", line: `Beat ${state.bid} or pass`, detail: `${bidder} says ${state.bid} boxes open without a dead cat.` }
+      : {
+          tone: "bid",
+          line: `${name(turn)} is deciding: raise or pass`,
+          detail: `${bidder} ${state.bidderId === state.you ? "hold" : "holds"} the bid at ${state.bid}.`,
+        }
+  }
+
+  // Placing. A table with nothing on it is a round that has just begun.
+  const fresh = state.seats.every((p) => p.out || p.stackCount === 0)
+  if (fresh) {
+    return {
+      tone: "turn",
+      line: "New round",
+      detail: `Every box is back in its owner's hand. ${yours ? "You put" : `${name(turn)} puts`} the first one down.`,
+    }
+  }
+  if (yours) {
+    return {
+      tone: "turn",
+      line: "Your turn",
+      detail: state.biddingOpen
+        ? "Put another box down, or open the bidding."
+        : "Put a box down. Bidding opens once every shelf has one.",
+    }
+  }
+  return {
+    tone: "place",
+    line: `${name(turn)} is choosing a box`,
+    detail: state.biddingOpen ? "They can add another, or open the bidding." : "Bidding opens once every shelf has one.",
+  }
+}
+
+// Old line leaves fast and up, new one arrives from below: the table moved on.
+// Reduced motion keeps the crossfade, which carries the news, and drops the travel.
+const enter = { opacity: 0, y: 14, filter: "blur(4px)" }
+const settled = { opacity: 1, y: 0, filter: "blur(0px)", transition: { duration: 0.42, ease: [0.16, 1, 0.3, 1] } }
+const leave = { opacity: 0, y: -10, filter: "blur(4px)", transition: { duration: 0.18, ease: "easeIn" } }
+const fade = { opacity: 0, transition: { duration: 0.2 } }
+const visible = { opacity: 1, transition: { duration: 0.2 } }
+
+function Banner({ state, opening }) {
+  const calm = useReducedMotion()
+  const { tone, line, detail, clock } = narrate(state, opening)
   return (
-    <div className={`banner ${tone}`} role="status" aria-live="polite">
-      <strong>{line}</strong>
-      {state.bid > 0 && state.phase !== "over" && !last && (
-        <span>
-          bid {state.bid} by {bidder?.name}
-        </span>
-      )}
+    <div className={`banner ${tone}`} role="status" aria-live="polite" aria-atomic="true">
+      <AnimatePresence mode="popLayout" initial={false}>
+        <motion.div key={line} className="banner-copy" initial={calm ? fade : enter} animate={calm ? visible : settled} exit={calm ? fade : leave}>
+          <strong>{line}</strong>
+          <p>{detail}</p>
+        </motion.div>
+      </AnimatePresence>
+      {clock && <i className="banner-clock" style={{ animationDuration: `${RESULT_HOLD_MS}ms` }} aria-hidden="true" />}
     </div>
   )
 }

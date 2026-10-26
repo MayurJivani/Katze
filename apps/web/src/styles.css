@@ -552,21 +552,41 @@ em.pale {
 /* ── Banner ─────────────────────────────────────────────────────────────── */
 
 .banner {
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
-  flex-wrap: wrap;
+  position: relative;
+  overflow: hidden;
+  display: grid;
   padding: 18px;
   background: var(--band);
+}
+
+/* Lines swap in place, so the banner never jumps when the copy changes length. */
+.banner-copy {
+  grid-area: 1 / 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .banner strong {
   font-size: clamp(1.05rem, 0.95rem + 0.5vw, 1.3rem);
   font-weight: 800;
   letter-spacing: -0.025em;
+  text-wrap: balance;
 }
 
-.banner.reveal strong {
+.banner p {
+  font-size: 0.86rem;
+  color: var(--secondary);
+  max-width: 62ch;
+}
+
+.banner.turn strong,
+.banner.over strong {
+  color: var(--cream);
+}
+
+.banner.reveal strong,
+.banner.dead strong {
   color: var(--dead);
 }
 
@@ -575,9 +595,17 @@ em.pale {
 }
 
 /* The result of a dig is the one banner worth noticing across the room. */
-.banner.reveal,
+.banner.dead,
 .banner.won {
   animation: called 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.banner.dead {
+  box-shadow: var(--ring), inset 0 0 0 999px var(--dead-wash);
+}
+
+.banner.won {
+  box-shadow: var(--ring), inset 0 0 0 999px var(--good-wash);
 }
 
 @keyframes called {
@@ -587,15 +615,28 @@ em.pale {
   }
 }
 
-.banner.over strong {
-  color: var(--cream);
+/* The result drains away along the bottom edge: when it runs out, the table clears. */
+.banner-clock {
+  position: absolute;
+  inset: auto 0 0;
+  height: 3px;
+  background: currentColor;
+  transform-origin: left;
+  animation: drain linear forwards;
 }
 
-.banner span {
-  margin-left: auto;
-  font-size: 0.8rem;
-  color: var(--secondary);
-  font-variant-numeric: tabular-nums;
+.banner.dead .banner-clock {
+  color: var(--dead);
+}
+
+.banner.won .banner-clock {
+  color: var(--good-bright);
+}
+
+@keyframes drain {
+  to {
+    transform: scaleX(0);
+  }
 }
 
 /* ── Shelves ────────────────────────────────────────────────────────────── */

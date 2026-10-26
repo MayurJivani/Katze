@@ -26,3 +26,16 @@ export const FLIP_END = 1.6
 export function flipProgress(startedAt, now) {
   return startedAt === undefined ? FLIP_END : ((now - startedAt) / 1000) * FLIP_RATE
 }
+
+/**
+ * The opened boxes drawn on one player's mat.
+ *
+ * Mid-reveal that is whatever is face up. Between rounds the server has already
+ * collected everything back into the hands, so the result it holds is shown
+ * instead, and once the table lets go of that result the mat is empty.
+ */
+export function faceUpOn(state, id) {
+  const p = state.seats.find((x) => x.id === id)
+  if (p?.up.length) return p.up
+  return state.lastReveal?.seats.find((x) => x.id === id)?.up ?? []
+}

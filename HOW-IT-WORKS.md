@@ -95,6 +95,20 @@ ran, and an opened box sat at `rotation.z = PI` showing its own back for the res
 two tweens that looked fine were the two that had been hand-chained onto the seat group, which is
 what hid the bug.
 
+That loop then died outright the first time a box landed: the settle read a `dead` that only
+existed in the caller, threw inside `requestAnimationFrame`, and never scheduled the next frame.
+The table froze on that frame, so the opened boxes and the old hand stayed on screen for the rest of
+the game. The tick now schedules itself before running any updater. The same pass turned the cats
+the right way up (a cylinder cap maps the top of its texture to +x, so every cat lay on its side)
+and made the box that settles a round actually flip: the server collects it straight into the
+result, so it never appeared in anyone's face-up list and arrived already face up.
+
+Between rounds the result stays on the table for a few seconds, with a bar draining along the
+banner, and then the mats empty and every box is back in its owner's hand. That hold used to restart
+on every state push, because each push parses a new result object; it is now keyed on the result's
+content. With reduced motion the boxes land without the toss, nothing pulses, and the banner
+crossfades instead of sliding.
+
 ## Two house rules the printed game does not have
 
 **A bid has to reach past your own shelf.** Your own boxes open in full whatever you bid, and you
