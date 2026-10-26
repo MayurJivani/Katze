@@ -1,0 +1,22 @@
+[Unit]
+Description=katze (party game relay)
+After=network-online.target
+
+[Service]
+User=icarusfalls
+WorkingDirectory=/opt/apps/Katze
+# Optional overrides only; nothing here is secret.
+EnvironmentFile=-/etc/apps/katze.env
+Environment=NODE_ENV=production RELAY_PORT=4331
+ExecStart=/usr/bin/node apps/server/src/index.js
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=15
+MemoryMax=384M
+NoNewPrivileges=yes
+ProtectSystem=full
+ProtectHome=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target
