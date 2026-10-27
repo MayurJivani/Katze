@@ -86,6 +86,8 @@ function sweep(code) {
 const wss = new WebSocketServer({ server, path: "/ws", maxPayload: 4096 })
 
 wss.on("connection", (ws) => {
+  // ws reports an oversized or malformed frame as an 'error' event and closes the socket itself; unheard, that event crashes the process.
+  ws.on("error", () => {})
   const meta = { code: null, playerId: null, windowStart: Date.now(), windowCount: 0 }
   ws.isAlive = true
   ws.on("pong", () => (ws.isAlive = true))
