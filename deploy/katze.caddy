@@ -1,5 +1,5 @@
 http://katze.futile.studio {
-	encode zstd gzip
+	import common
 
 	# No blanket Cache-Control: the relay already serves no-cache for the HTML
 	# and immutable for Vite's hashed assets. Overriding it here would throw the
