@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto"
+
 /**
  * Skull, themed as Schrodinger's cat. Pure rules over one room object.
  *
@@ -28,6 +30,11 @@ const LOG_KEEP = 12
 
 const bad = (message) => {
   throw new Error(message)
+}
+
+/** The public seat id for a client's secret: one-way, so a seat id seen on the table is useless as a secret. */
+export function seatId(secret) {
+  return `p_${createHash("sha256").update(String(secret)).digest("hex").slice(0, 16)}`
 }
 
 export function createRoom(code) {

@@ -14,6 +14,7 @@ import { existsSync } from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import express from "express"
+import { randomBytes, randomInt } from "node:crypto"
 import { WebSocketServer } from "ws"
 import * as G from "./services/game.js"
 
@@ -25,6 +26,16 @@ const WEB_DIST = path.resolve(here, "../../web/dist")
 
 const app = express()
 app.disable("x-powered-by")
+app.use((_req, res, next) => {
+  res.set({
+    "Content-Security-Policy":
+      "default-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; " +
+      "object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer",
+  })
+  next()
+})
 app.get("/healthz", (_req, res) => res.json({ ok: true, rooms: rooms.size }))
 if (existsSync(WEB_DIST)) {
   app.use(express.static(WEB_DIST))
@@ -44,7 +55,7 @@ const GRACE_MS = 5 * 60_000
 
 function newCode() {
   for (let i = 0; i < 50; i++) {
-    const code = Array.from({ length: 4 }, () => CODE_ALPHABET[Math.floor(Math.random() * 32)]).join("")
+    const code = Array.from({ length: 4 }, () => CODE_ALPHABET[randomInt(32)]).join("")
     if (!rooms.has(code)) return code
   }
   return `C${Date.now().toString(36).toUpperCase().slice(-3)}`
@@ -75,11 +86,16 @@ function sweep(code) {
 const wss = new WebSocketServer({ server, path: "/ws", maxPayload: 4096 })
 
 wss.on("connection", (ws) => {
-  const meta = { code: null, playerId: null }
+  const meta = { code: null, playerId: null, windowStart: Date.now(), windowCount: 0 }
   ws.isAlive = true
   ws.on("pong", () => (ws.isAlive = true))
 
   ws.on("message", (raw) => {
+    // Fixed window per socket: plenty for play, too little to walk the 4-letter
+    // room code space or flood a table with broadcasts.
+    const now = Date.now()
+    if (now - meta.windowStart > 10_000) Object.assign(meta, { windowStart: now, windowCount: 0 })
+    if (++meta.windowCount > 60) return ws.close(1008, "Too many messages")
     let msg
     try {
       msg = JSON.parse(raw.toString())
@@ -124,7 +140,12 @@ wss.on("connection", (ws) => {
 function handleJoin(ws, meta, msg) {
   const name = String(msg.name ?? "").trim().slice(0, 16) || "Cat"
   const wanted = String(msg.code ?? "").trim().toUpperCase().slice(0, 8)
-  const playerId = String(msg.playerId ?? "").slice(0, 40) || `p_${Math.random().toString(36).slice(2, 10)}`
+  // What the client sends is a secret it keeps to get its seat back. Every seat id
+  // is broadcast to the table (reveal and kick target them), so the seat is keyed
+  // by a one-way hash of the secret: joining with an id seen on the table hashes
+  // to a different seat instead of taking over someone's hand.
+  const secret = String(msg.playerId ?? "").slice(0, 40) || randomBytes(16).toString("hex")
+  const playerId = G.seatId(secret)
 
   let entry = wanted ? rooms.get(wanted) : null
   if (!entry && msg.create) {

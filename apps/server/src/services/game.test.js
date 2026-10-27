@@ -187,3 +187,9 @@ test("what was turned over stays on the table until the next round starts", () =
   G.place(room, turnId(room), "cat")
   assert.equal(room.lastReveal, null)
 })
+
+test("a seat id seen on the table cannot be used to take that seat", () => {
+  const mine = G.seatId("p_my-secret")
+  assert.equal(G.seatId("p_my-secret"), mine, "the same secret gets its seat back")
+  assert.notEqual(G.seatId(mine), mine, "replaying the public id lands somewhere else")
+})
