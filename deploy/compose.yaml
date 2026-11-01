@@ -3,6 +3,7 @@
 services:
   katze:
     image: ghcr.io/mayurjivani/katze:latest
+    pull_policy: always
     network_mode: host
     restart: unless-stopped
     user: "1000:1000"
