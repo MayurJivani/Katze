@@ -31,12 +31,8 @@ player is ever told what is inside another player's box.
 
 ## Deploy
 
-```bash
-./deploy/deploy.sh
-```
-
-One entry point, no arguments, safe to run twice. The box keeps its own checkout at `~/apps/Katze`,
-so a deploy is a fast-forward plus a container rebuild. The site block installs itself into
+A push to `main` builds the image (`.github/workflows/image.yml`) and Coolify on Jinx runs it from
+`deploy/compose.yaml`. On a rebuilt box, `./deploy/deploy.sh` installs the site block into
 `/etc/caddy/conf.d` and only reloads Caddy when it actually changed.
 
 ## Shape
