@@ -87,10 +87,14 @@ function Header({ code, connected, joined }) {
   )
 }
 
+let autoJoined = false
+
 function Home({ onJoin, waiting, onLearn }) {
   const [found, setFound] = useState(null)
-  const fromLink = new URLSearchParams(location.search).get("code") ?? ""
-  const [name, setName] = useState(store.name)
+  const params = new URLSearchParams(location.search)
+  const fromLink = params.get("code") ?? ""
+  const linkName = fromLink && (params.get("name") ?? "").trim().slice(0, 16)
+  const [name, setName] = useState(linkName || store.name)
   const [code, setCode] = useState(fromLink)
   const [joining, setJoining] = useState(!!fromLink)
 
@@ -104,6 +108,12 @@ function Home({ onJoin, waiting, onLearn }) {
     e.preventDefault()
     go(!joining)
   }
+  // Module-level so remounts (tutorial, StrictMode) never join twice.
+  useEffect(() => {
+    if (!linkName || autoJoined) return
+    autoJoined = true
+    go(false)
+  }, [])
 
   return (
     <>
